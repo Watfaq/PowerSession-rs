@@ -1,8 +1,9 @@
+#[allow(non_snake_case)]
 extern crate clap;
 extern crate commands;
 
 use clap::{App, AppSettings, Arg};
-
+use commands::Record;
 
 fn main() {
     let app = App::new("PowerSession")
@@ -16,39 +17,27 @@ fn main() {
                     Arg::new("file")
                         .about("The filename to save the record")
                         .index(1)
-                        .required(true)
+                        .required(true),
                 )
                 .arg(
                     Arg::new("command")
                         .about("The command to record, default to be powershell.exe")
                         .takes_value(true)
-                        .short('i')
+                        .short('c')
                         .long("command")
-                        .default_value("powershell.exe")
-                )
-
+                        .default_value("powershell.exe"),
+                ),
         )
         .subcommand(
             App::new("play")
                 .about("Play a recorded session")
-                .arg(
-                    Arg::new("file")
-                        .about("The record session")
-                        .index(1)
-                )
+                .arg(Arg::new("file").about("The record session").index(1)),
         )
-        .subcommand(
-            App::new("auth")
-                .about("Authentication with asciinema.org")
-        )
+        .subcommand(App::new("auth").about("Authentication with asciinema.org"))
         .subcommand(
             App::new("upload")
                 .about("Upload a session to ascinema.org")
-                .arg(
-                    Arg::new("file")
-                    .about("The file to be uploaded")
-                    .index(1)
-                )
+                .arg(Arg::new("file").about("The file to be uploaded").index(1)),
         );
     let m = app.get_matches();
 
@@ -57,14 +46,22 @@ fn main() {
             println!("Playing {}", play_matches.value_of("file").unwrap())
         }
         Some(("rec", rec_matches)) => {
-            println!("Recording default command {} to {}", rec_matches.value_of("command").unwrap(), rec_matches.value_of("file").unwrap())
+            let mut record = Record::new(
+                rec_matches.value_of("file").unwrap(),
+                None,
+                rec_matches.value_of("command").unwrap(),
+            );
+            record.execute();
         }
         Some(("auth", _)) => {
             commands::test();
         }
         Some(("upload", upload_matches)) => {
-            println!("Uploading file {}", upload_matches.value_of("file").unwrap())
+            println!(
+                "Uploading file {}",
+                upload_matches.value_of("file").unwrap()
+            )
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }

@@ -1,19 +1,16 @@
+extern crate terminal;
+
 use serde::Serialize;
 use std::{
     collections::HashMap,
     env,
     fs::File,
-    io::{BufRead, Read, Write},
-    os::windows::io::{FromRawHandle, RawHandle},
+    io::{Read, Write},
+    os::windows::io::{AsRawHandle, FromRawHandle, RawHandle},
     thread,
     time::SystemTime,
 };
-
-pub trait Terminal {
-    fn run(&self, command: &str);
-    fn get_stdin(&self) -> File;
-    fn get_stdout(&self) -> File;
-}
+use terminal::{Terminal, WindowsTerminal};
 
 #[derive(Serialize)]
 struct RecordHeader<'a> {
@@ -26,13 +23,23 @@ struct RecordHeader<'a> {
 }
 
 pub struct Record<'a> {
-    output_writer: RawHandle,
+    output_writer: RawHandle, // TODO: should be a platform independent
     env: Option<HashMap<&'a str, String>>,
     command: &'a str,
-    terminal: &'a Box<dyn Terminal>,
+    terminal: Box<dyn Terminal + 'a>,
 }
 
 impl<'a> Record<'a> {
+    pub fn new(filename: &'a str, env: Option<HashMap<&'a str, String>>, command: &'a str) -> Self {
+        Record {
+            output_writer: File::create(filename)
+                .expect("Can't create file")
+                .as_raw_handle(),
+            env: env,
+            command: command,
+            terminal: WindowsTerminal::new(command),
+        }
+    }
     pub fn execute(&mut self) {
         let env = self.env.get_or_insert(HashMap::new());
 
