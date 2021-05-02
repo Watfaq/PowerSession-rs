@@ -32,6 +32,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 
 [[package]]
+name = "cfg-if"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
 name = "clap"
 version = "3.0.0-beta.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -77,6 +83,17 @@ name = "const-sha1"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb58b6451e8c2a812ad979ed1d83378caa5e927eef2622017a45f251457c2c9d"
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4feb231f0d4d6af81aed15928e58ecf5816aa62a2393e2c82f46973e92a9a278"
+dependencies = [
+ "autocfg",
+ "cfg-if",
+ "lazy_static",
+]
 
 [[package]]
 name = "hashbrown"
@@ -245,7 +262,7 @@ dependencies = [
 name = "terminal"
 version = "0.1.0"
 dependencies = [
- "widestring",
+ "crossbeam-utils",
  "windows",
 ]
 
@@ -287,12 +304,6 @@ name = "version_check"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5fecdca9a5291cc2b8dcf7dc02453fee791a280f3743cb0905f8822ae463b3fe"
-
-[[package]]
-name = "widestring"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c168940144dd21fd8046987c16a46a33d5fc84eec29ef9dcddc2ac9e31526b7c"
 
 [[package]]
 name = "winapi"

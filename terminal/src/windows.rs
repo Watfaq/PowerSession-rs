@@ -1,14 +1,21 @@
 use crate::Terminal;
+
 mod bindings {
     windows::include_bindings!();
 }
 
 use std::collections::HashMap;
+use std::ffi::c_void;
 use std::ffi::OsString;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::iter::once;
 use std::mem;
 use std::os::windows::ffi::OsStrExt;
+use std::os::windows::io::{AsRawHandle, FromRawHandle, RawHandle};
 use std::ptr::{null, null_mut};
+use std::sync::mpsc::{Receiver, Sender};
+use std::time::Duration;
 
 use bindings::Windows::Win32::SystemServices::{
     ClosePseudoConsole, CreatePipe, CreateProcessW, CreatePseudoConsole, GetConsoleMode,
@@ -19,14 +26,16 @@ use bindings::Windows::Win32::WindowsProgramming::{
     CloseHandle, GetStdHandle, PROCESS_CREATION_FLAGS, STD_HANDLE_TYPE,
 };
 
-pub struct WindowsTerminal<'a> {
+use bindings::Windows::Win32::FileSystem::{ReadFile, WriteFile};
+
+pub struct WindowsTerminal {
     handle: HPCON,
     stdin: HANDLE,
     stdout: HANDLE,
-    cwd: &'a str,
+    cwd: String,
 }
 
-impl<'a> Drop for WindowsTerminal<'a> {
+impl Drop for WindowsTerminal {
     fn drop(&mut self) {
         unsafe {
             CloseHandle(self.stdin);
@@ -36,18 +45,18 @@ impl<'a> Drop for WindowsTerminal<'a> {
     }
 }
 
-impl<'a> WindowsTerminal<'a> {
-    pub fn new(cwd: &'a str) -> Box<dyn Terminal + 'a> {
+impl WindowsTerminal {
+    pub fn new(cwd: String) -> Self {
         let mut handle = HPCON::default();
         let mut stdin = INVALID_HANDLE_VALUE;
         let mut stdout = INVALID_HANDLE_VALUE;
         WindowsTerminal::create_pseudo_console_and_pipes(&mut handle, &mut stdin, &mut stdout);
-        Box::new(WindowsTerminal {
+        WindowsTerminal {
             handle: handle,
             stdin: stdin,
             stdout: stdout,
             cwd: cwd,
-        })
+        }
     }
 
     fn create_pseudo_console_and_pipes(
@@ -92,7 +101,7 @@ impl<'a> WindowsTerminal<'a> {
     }
 }
 
-impl<'a> Terminal for WindowsTerminal<'a> {
+impl Terminal for WindowsTerminal {
     fn run(&self, command: &str) {
         unsafe {
             let mut pi_proc_info: PROCESS_INFORMATION = { mem::zeroed() };
@@ -103,7 +112,7 @@ impl<'a> Terminal for WindowsTerminal<'a> {
             si_start_info.hStdInput = self.stdin;
             si_start_info.dwFlags |= STARTUPINFOW_FLAGS::STARTF_USESTDHANDLES;
 
-            CreateProcessW(
+            let success = CreateProcessW(
                 PWSTR::default(),
                 WindowsTerminal::convert_to_pstr(command),
                 null_mut(),
@@ -111,16 +120,55 @@ impl<'a> Terminal for WindowsTerminal<'a> {
                 false,
                 PROCESS_CREATION_FLAGS::EXTENDED_STARTUPINFO_PRESENT,
                 null_mut(),
-                WindowsTerminal::convert_to_pstr(self.cwd),
+                WindowsTerminal::convert_to_pstr(&self.cwd),
                 &mut si_start_info as *mut STARTUPINFOW,
                 &mut pi_proc_info as *mut PROCESS_INFORMATION,
             );
+
+            if !success.as_bool() {
+                panic!("Cant create process");
+            } else {
+                CloseHandle(pi_proc_info.hProcess);
+                CloseHandle(pi_proc_info.hThread);
+            }
         }
     }
-    fn get_stdin(&self) -> std::fs::File {
-        todo!()
+    fn attach_stdin(&self, rx: Receiver<u8>) {
+        let stdin = self.stdin.clone();
+        std::thread::spawn(move || loop {
+            let rv = rx.recv_timeout(Duration::from_secs(1));
+            match rv {
+                Ok(b) => {
+                    let mut buf = [b, 1];
+                    unsafe {
+                        WriteFile(
+                            stdin,
+                            buf.as_mut_ptr() as _,
+                            1 as u32,
+                            null_mut(),
+                            null_mut(),
+                        );
+                    }
+                }
+                Err(err) => {
+                    println!("{}", err);
+                    break;
+                }
+            }
+        });
     }
-    fn get_stdout(&self) -> std::fs::File {
-        todo!()
+    fn attach_stdout(&self, tx: Sender<u8>) {
+        let stdout = self.stdout.clone();
+        std::thread::spawn(move || loop {
+            let mut buf = [0; 1];
+            let mut n_read: u32 = 0;
+            unsafe {
+                let success = ReadFile(stdout, buf.as_mut_ptr() as _, 1, &mut n_read, null_mut());
+                if !success.as_bool() || n_read == 0 {
+                    break;
+                }
+            }
+            tx.send(buf[0]);
+        });
     }
 }

@@ -16,5 +16,7 @@ fn main() {
             STARTUPINFOW, PROCESS_INFORMATION, STARTUPINFOW_FLAGS,
             CreateProcessW, PWSTR,
         },
+
+        Windows::Win32::FileSystem::{WriteFile, ReadFile},
     );
 }

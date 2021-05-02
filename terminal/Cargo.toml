@@ -9,8 +9,8 @@ edition = "2018"
 [dependencies]
 #[cfg(windows)]
 windows = "0.9.1"
-#[cfg(windows)]
-widestring = "0.4.0"
+
+crossbeam-utils = "0.8"
 
 
 [build-dependencies]

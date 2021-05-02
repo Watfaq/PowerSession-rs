@@ -47,9 +47,9 @@ fn main() {
         }
         Some(("rec", rec_matches)) => {
             let mut record = Record::new(
-                rec_matches.value_of("file").unwrap(),
+                rec_matches.value_of("file").unwrap().to_owned(),
                 None,
-                rec_matches.value_of("command").unwrap(),
+                rec_matches.value_of("command").unwrap().to_owned(),
             );
             record.execute();
         }
