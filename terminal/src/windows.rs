@@ -17,10 +17,12 @@ use std::ptr::{null, null_mut};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
+use bindings::Windows::Win32::Debug::GetLastError;
 use bindings::Windows::Win32::SystemServices::{
     ClosePseudoConsole, CreatePipe, CreateProcessW, CreatePseudoConsole, GetConsoleMode,
-    GetConsoleScreenBufferInfo, SetConsoleMode, CONSOLE_SCREEN_BUFFER_INFO, COORD, HANDLE, HPCON,
-    INVALID_HANDLE_VALUE, PROCESS_INFORMATION, PWSTR, STARTUPINFOW, STARTUPINFOW_FLAGS,
+    GetConsoleScreenBufferInfo, InitializeProcThreadAttributeList, SetConsoleMode,
+    CONSOLE_SCREEN_BUFFER_INFO, COORD, HANDLE, HPCON, INVALID_HANDLE_VALUE, PROCESS_INFORMATION,
+    STARTUPINFOW, STARTUPINFOW_FLAGS,
 };
 use bindings::Windows::Win32::WindowsProgramming::{
     CloseHandle, GetStdHandle, PROCESS_CREATION_FLAGS, STD_HANDLE_TYPE,
@@ -91,14 +93,6 @@ impl WindowsTerminal {
             }
         }
     }
-
-    fn convert_to_pstr(s: &str) -> PWSTR {
-        let ss = OsString::from(s);
-        let mut s_wide: Vec<u16> = ss.as_os_str().encode_wide().chain(once(0)).collect();
-        let mut c = PWSTR::default();
-        c.0 = s_wide.as_mut_ptr();
-        return c;
-    }
 }
 
 impl Terminal for WindowsTerminal {
@@ -107,26 +101,23 @@ impl Terminal for WindowsTerminal {
             let mut pi_proc_info: PROCESS_INFORMATION = { mem::zeroed() };
             let mut si_start_info: STARTUPINFOW = { mem::zeroed() };
             si_start_info.cb = mem::size_of::<STARTUPINFOW>() as u32;
-            si_start_info.hStdError = self.stdout;
-            si_start_info.hStdOutput = self.stdout;
-            si_start_info.hStdInput = self.stdin;
-            si_start_info.dwFlags |= STARTUPINFOW_FLAGS::STARTF_USESTDHANDLES;
 
             let success = CreateProcessW(
-                PWSTR::default(),
-                WindowsTerminal::convert_to_pstr(command),
+                None,
+                command,
                 null_mut(),
                 null_mut(),
                 false,
                 PROCESS_CREATION_FLAGS::EXTENDED_STARTUPINFO_PRESENT,
                 null_mut(),
-                WindowsTerminal::convert_to_pstr(&self.cwd),
+                self.cwd.as_str(),
                 &mut si_start_info as *mut STARTUPINFOW,
                 &mut pi_proc_info as *mut PROCESS_INFORMATION,
             );
 
             if !success.as_bool() {
-                panic!("Cant create process");
+                let err = GetLastError();
+                panic!("Cant create process: {:?}", err);
             } else {
                 CloseHandle(pi_proc_info.hProcess);
                 CloseHandle(pi_proc_info.hThread);

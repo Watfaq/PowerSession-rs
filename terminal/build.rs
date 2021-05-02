@@ -14,9 +14,10 @@ fn main() {
             HANDLE, INVALID_HANDLE_VALUE,
             HPCON, COORD, CONSOLE_SCREEN_BUFFER_INFO, GetConsoleScreenBufferInfo,
             STARTUPINFOW, PROCESS_INFORMATION, STARTUPINFOW_FLAGS,
-            CreateProcessW, PWSTR,
+            CreateProcessW, InitializeProcThreadAttributeList, UpdateProcThreadAttribute
         },
 
         Windows::Win32::FileSystem::{WriteFile, ReadFile},
+        Windows::Win32::Debug::GetLastError,
     );
 }
