@@ -1,27 +1,32 @@
+use serde::Serialize;
 use std::{
     collections::HashMap,
     env,
     fs::File,
     io::{BufRead, Read, Write},
+    os::windows::io::{FromRawHandle, RawHandle},
     thread,
+    time::SystemTime,
 };
 
 pub trait Terminal {
     fn run(&self, command: &str);
-    fn get_input_file(&self) -> File;
-    fn get_output_file(&self) -> File;
+    fn get_stdin(&self) -> File;
+    fn get_stdout(&self) -> File;
 }
 
-struct RecordHeader {
+#[derive(Serialize)]
+struct RecordHeader<'a> {
     version: u8,
     width: u32,
     height: u32,
     timestamp: u64,
-    env: HashMap<&'static str, String>,
+    #[serde(rename = "env")]
+    environment: &'a HashMap<&'a str, String>,
 }
 
 pub struct Record<'a> {
-    output_writer: File,
+    output_writer: RawHandle,
     env: Option<HashMap<&'a str, String>>,
     command: &'a str,
     terminal: &'a Box<dyn Terminal>,
@@ -41,25 +46,42 @@ impl<'a> Record<'a> {
 
     pub fn feed_input(&self, input: &str) {
         self.terminal
-            .get_input_file()
+            .get_stdin()
             .write(input.as_bytes())
             .expect("Can't write to Terminal");
     }
 
     fn record(&self) {
-        let mut terminal_output = File::from(self.terminal.get_output_file());
-        let mut output_receiver = self.output_writer.as_raw_fd();
+        let header = RecordHeader {
+            version: 2,
+            width: 10,
+            height: 10,
+            timestamp: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("check your machine time")
+                .as_secs(),
+            environment: self.env.as_ref().unwrap(),
+        };
+        unsafe {
+            let mut terminal_output = self.terminal.get_stdout();
+            let mut output_receiver = File::from_raw_handle(self.output_writer);
 
-        thread::spawn(|| loop {
-            let mut buf = [0, 10];
-            let rv = terminal_output.read(&mut buf);
-            match rv {
-                Ok(n) if n > 0 => {
-                    output_receiver.write(&buf[..n]);
+            output_receiver
+                .write(serde_json::to_string(&header).unwrap().as_bytes())
+                .expect("Can't write to output receiver");
+            thread::spawn(move || loop {
+                let mut buf = [0, 10];
+                let rv = terminal_output.read(&mut buf);
+                match rv {
+                    Ok(n) if n > 0 => {
+                        output_receiver
+                            .write(&buf[..n])
+                            .expect("Failed to write to output");
+                    }
+                    _ => break,
                 }
-                _ => break,
-            }
-        });
-        self.terminal.run(self.command);
+            });
+            self.terminal.run(self.command);
+        }
     }
 }
