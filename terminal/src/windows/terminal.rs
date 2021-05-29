@@ -1,34 +1,19 @@
-use crate::Terminal;
-
-mod bindings {
-    windows::include_bindings!();
-}
-
-use std::collections::HashMap;
-use std::ffi::c_void;
-use std::ffi::OsString;
-use std::fs::File;
-use std::io::{Read, Write};
-use std::iter::once;
-use std::mem;
-use std::os::windows::ffi::OsStrExt;
-use std::os::windows::io::{AsRawHandle, FromRawHandle, RawHandle};
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
-use bindings::Windows::Win32::Debug::GetLastError;
-use bindings::Windows::Win32::SystemServices::{
-    ClosePseudoConsole, CreatePipe, CreateProcessW, CreatePseudoConsole, GetConsoleMode,
-    GetConsoleScreenBufferInfo, InitializeProcThreadAttributeList, SetConsoleMode,
-    CONSOLE_SCREEN_BUFFER_INFO, COORD, HANDLE, HPCON, INVALID_HANDLE_VALUE, PROCESS_INFORMATION,
-    STARTUPINFOW, STARTUPINFOW_FLAGS,
+use super::bindings::Windows::Win32::FileSystem::{ReadFile, WriteFile};
+use super::bindings::Windows::Win32::SystemServices::{
+    ClosePseudoConsole, CreatePipe, CreatePseudoConsole, GetConsoleScreenBufferInfo,
+    CONSOLE_SCREEN_BUFFER_INFO, COORD, HANDLE, HPCON, INVALID_HANDLE_VALUE,
 };
-use bindings::Windows::Win32::WindowsProgramming::{
-    CloseHandle, GetStdHandle, PROCESS_CREATION_FLAGS, STD_HANDLE_TYPE,
+use super::bindings::Windows::Win32::WindowsProgramming::{
+    CloseHandle, GetStdHandle, STD_HANDLE_TYPE,
 };
 
-use bindings::Windows::Win32::FileSystem::{ReadFile, WriteFile};
+use super::process::start_process;
+
+use crate::Terminal;
 
 pub struct WindowsTerminal {
     handle: HPCON,
@@ -49,7 +34,7 @@ impl Drop for WindowsTerminal {
 
 impl WindowsTerminal {
     pub fn new(cwd: String) -> Self {
-        let mut handle = HPCON::default();
+        let mut handle = HPCON::NULL;
         let mut stdin = INVALID_HANDLE_VALUE;
         let mut stdout = INVALID_HANDLE_VALUE;
         WindowsTerminal::create_pseudo_console_and_pipes(&mut handle, &mut stdin, &mut stdout);
@@ -96,34 +81,10 @@ impl WindowsTerminal {
 }
 
 impl Terminal for WindowsTerminal {
-    fn run(&self, command: &str) {
-        unsafe {
-            let mut pi_proc_info: PROCESS_INFORMATION = { mem::zeroed() };
-            let mut si_start_info: STARTUPINFOW = { mem::zeroed() };
-            si_start_info.cb = mem::size_of::<STARTUPINFOW>() as u32;
-
-            let success = CreateProcessW(
-                None,
-                command,
-                null_mut(),
-                null_mut(),
-                false,
-                PROCESS_CREATION_FLAGS::EXTENDED_STARTUPINFO_PRESENT,
-                null_mut(),
-                self.cwd.as_str(),
-                &mut si_start_info as *mut STARTUPINFOW,
-                &mut pi_proc_info as *mut PROCESS_INFORMATION,
-            );
-
-            if !success.as_bool() {
-                let err = GetLastError();
-                panic!("Cant create process: {:?}", err);
-            } else {
-                CloseHandle(pi_proc_info.hProcess);
-                CloseHandle(pi_proc_info.hThread);
-            }
-        }
+    fn run(&mut self, command: &str) {
+        start_process(command, &self.cwd, &mut self.handle);
     }
+
     fn attach_stdin(&self, rx: Receiver<u8>) {
         let stdin = self.stdin.clone();
         std::thread::spawn(move || loop {

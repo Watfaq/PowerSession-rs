@@ -10,11 +10,13 @@ fn main() {
         Windows::Win32::SystemServices::{
             ClosePseudoConsole, CreatePseudoConsole,
             CreatePipe,
+            DeleteProcThreadAttributeList,
             GetConsoleMode, SetConsoleMode,
             HANDLE, INVALID_HANDLE_VALUE,
             HPCON, COORD, CONSOLE_SCREEN_BUFFER_INFO, GetConsoleScreenBufferInfo,
-            STARTUPINFOW, PROCESS_INFORMATION, STARTUPINFOW_FLAGS,
-            CreateProcessW, InitializeProcThreadAttributeList, UpdateProcThreadAttribute
+            STARTUPINFOEXW,STARTUPINFOW, PROCESS_INFORMATION, STARTUPINFOW_FLAGS,SECURITY_ATTRIBUTES,
+            CreateProcessW, InitializeProcThreadAttributeList, UpdateProcThreadAttribute,LPPROC_THREAD_ATTRIBUTE_LIST,
+            LPPROC_THREAD_ATTRIBUTE_LIST, BOOL
         },
 
         Windows::Win32::FileSystem::{WriteFile, ReadFile},
