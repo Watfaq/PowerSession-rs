@@ -1,12 +1,12 @@
 use std::ptr::null_mut;
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::Duration;
 
 use super::bindings::Windows::Win32::Storage::FileSystem::*;
 use super::bindings::Windows::Win32::System::Console::*;
 use super::bindings::Windows::Win32::System::Diagnostics::Debug::GetLastError;
 use super::bindings::Windows::Win32::System::SystemServices::*;
 use super::bindings::Windows::Win32::System::WindowsProgramming::*;
+use super::bindings::Windows::Win32::System::Threading::*;
 extern crate windows as w;
 use w::HRESULT;
 
@@ -38,10 +38,10 @@ impl WindowsTerminal {
         let mut stdout = INVALID_HANDLE_VALUE;
         WindowsTerminal::create_pseudo_console_and_pipes(&mut handle, &mut stdin, &mut stdout);
         WindowsTerminal {
-            handle: handle,
-            stdin: stdin,
-            stdout: stdout,
-            cwd: cwd,
+            handle,
+            stdin,
+            stdout,
+            cwd,
         }
     }
 
@@ -54,8 +54,12 @@ impl WindowsTerminal {
         let mut h_pipe_pty_out = INVALID_HANDLE_VALUE;
 
         unsafe {
-            CreatePipe(&mut h_pipe_pty_in, stdin, null_mut(), 0);
-            CreatePipe(stdout, &mut h_pipe_pty_out, null_mut(), 0);
+            if !CreatePipe(&mut h_pipe_pty_in, stdin, null_mut(), 0).as_bool() {
+                panic!("cannot create pipe");
+            }
+            if !CreatePipe(stdout, &mut h_pipe_pty_out, null_mut(), 0).as_bool() {
+                panic!("cannot create pipe");
+            }
         }
 
         let mut console_size = COORD::default();
@@ -67,7 +71,7 @@ impl WindowsTerminal {
                 console_size.Y = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
             } else {
                 let err = GetLastError();
-                if err.0 == 5 {
+                if err.0 == 5 || err.0 == 6 {
                     // let's assume we are in debug
                     // https://github.com/microsoft/vscode-cpptools/issues/5449
                     console_size.X = 140;
@@ -83,25 +87,23 @@ impl WindowsTerminal {
             if result.is_err() {
                 panic!("Cant create PseudoConsole: {:?}", result.message());
             }
-            if INVALID_HANDLE_VALUE != h_pipe_pty_out {
-                CloseHandle(h_pipe_pty_out);
-            }
-            if INVALID_HANDLE_VALUE != h_pipe_pty_in {
-                CloseHandle(h_pipe_pty_in);
-            }
         }
     }
 }
 
 impl Terminal for WindowsTerminal {
-    fn run(&mut self, command: &str) {
-        start_process(command, &self.cwd, &mut self.handle);
+    fn run(&mut self, command: &str) -> u32 {
+        let process = start_process(command, &self.cwd, &mut self.handle);
+        unsafe { WaitForSingleObject(process.process_info.hProcess, INFINITE); }
+        let mut exit_code: u32 = 0;
+        unsafe { GetExitCodeProcess(process.process_info.hProcess, &mut exit_code); }
+        return exit_code;
     }
 
     fn attach_stdin(&self, rx: Receiver<u8>) {
-        let stdin = self.stdin.clone();
+        let stdin = self.stdin;
         std::thread::spawn(move || loop {
-            let rv = rx.recv_timeout(Duration::from_secs(1));
+            let rv = rx.recv();
             match rv {
                 Ok(b) => {
                     let mut buf = [b, 1];
@@ -116,20 +118,22 @@ impl Terminal for WindowsTerminal {
                     }
                 }
                 Err(err) => {
-                    println!("{}", err);
+                    println!("cannot receive on rx: {}", err);
                     break;
                 }
             }
         });
     }
     fn attach_stdout(&self, tx: Sender<u8>) {
-        let stdout = self.stdout.clone();
+        let stdout = self.stdout;
         std::thread::spawn(move || loop {
             let mut buf = [0; 1];
             let mut n_read: u32 = 0;
             unsafe {
                 let success = ReadFile(stdout, buf.as_mut_ptr() as _, 1, &mut n_read, null_mut());
+                println!("{}, {}", success.as_bool(), n_read);
                 if !success.as_bool() || n_read == 0 {
+                    println!("{}", "cannot read stdout");
                     break;
                 }
             }

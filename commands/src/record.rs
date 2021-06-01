@@ -95,8 +95,8 @@ impl Record {
                 }
             }
         });
-        self.terminal.attach_stdout(stdout_tx);
         self.terminal.attach_stdin(stdin_rx);
+        self.terminal.attach_stdout(stdout_tx);
         self.terminal.run(&self.command);
     }
 }

@@ -1,4 +1,6 @@
+use std::ffi::OsStr;
 use std::mem;
+use std::os::windows::prelude::*;
 use std::ptr::null_mut;
 
 use super::bindings::Windows::Win32::System::Diagnostics::Debug::*;
@@ -11,7 +13,7 @@ use w::HRESULT;
 static PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 0x00020016;
 
 pub struct Process {
-    pub startup_info: STARTUPINFOW,
+    pub startup_info: STARTUPINFOEXW,
     pub process_info: PROCESS_INFORMATION,
 }
 
@@ -30,10 +32,10 @@ impl Drop for Process {
 
 pub fn start_process(command: &str, working_dir: &str, h_pc: &mut HPCON) -> Process {
     let mut startup_info = configure_process_thread(h_pc, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE);
-    let process_info = run_process(&mut startup_info.StartupInfo, command, working_dir);
+    let process_info = run_process(&mut startup_info, command, working_dir);
     Process {
-        startup_info: startup_info.StartupInfo,
-        process_info: process_info,
+        startup_info,
+        process_info,
     }
 }
 
@@ -97,7 +99,7 @@ fn configure_process_thread(h_pc: &mut HPCON, attributes: usize) -> STARTUPINFOE
 }
 
 fn run_process(
-    startup_info: &mut STARTUPINFOW,
+    startup_info: &mut STARTUPINFOEXW,
     command: &str,
     working_dir: &str,
 ) -> PROCESS_INFORMATION {
@@ -114,15 +116,27 @@ fn run_process(
 
     let success = unsafe {
         CreateProcessW(
-            "",
-            command,
+            PWSTR(null_mut()),
+            PWSTR(
+                OsStr::new(command)
+                    .encode_wide()
+                    .chain(std::iter::once(0))
+                    .collect::<Vec<_>>()
+                    .as_mut_ptr(),
+            ),
             &mut p_sec,
             &mut t_sec,
             false,
             EXTENDED_STARTUPINFO_PRESENT,
             null_mut(),
-            working_dir,
-            startup_info,
+            PWSTR(
+                OsStr::new(working_dir)
+                    .encode_wide()
+                    .chain(std::iter::once(0))
+                    .collect::<Vec<_>>()
+                    .as_mut_ptr(),
+            ),
+            &mut startup_info.StartupInfo,
             &mut p_info,
         )
     };

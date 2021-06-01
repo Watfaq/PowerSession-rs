@@ -6,6 +6,7 @@ fn main() {
             STD_HANDLE_TYPE,
             GetStdHandle,
             STD_OUTPUT_HANDLE,
+            INFINITE,
         },
         Windows::Win32::System::Threading::{
             DeleteProcThreadAttributeList,
@@ -18,6 +19,8 @@ fn main() {
             InitializeProcThreadAttributeList,
             UpdateProcThreadAttribute,
             EXTENDED_STARTUPINFO_PRESENT,
+            WaitForSingleObject,
+            GetExitCodeProcess,
         },
         Windows::Win32::System::Console::{
             ClosePseudoConsole,
