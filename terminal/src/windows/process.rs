@@ -1,26 +1,23 @@
 use std::mem;
 use std::ptr::null_mut;
 
-use super::bindings::Windows::Win32::Debug::GetLastError;
-use super::bindings::Windows::Win32::SystemServices::{
-    CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList,
-    UpdateProcThreadAttribute, BOOL, HPCON, INVALID_HANDLE_VALUE, LPPROC_THREAD_ATTRIBUTE_LIST,
-    PROCESS_INFORMATION, SECURITY_ATTRIBUTES, STARTUPINFOEXW, STARTUPINFOW,
-};
-use super::bindings::Windows::Win32::WindowsProgramming::{CloseHandle, PROCESS_CREATION_FLAGS};
+use super::bindings::Windows::Win32::System::Diagnostics::Debug::*;
+use super::bindings::Windows::Win32::System::SystemServices::*;
+use super::bindings::Windows::Win32::System::Threading::*;
+use super::bindings::Windows::Win32::System::WindowsProgramming::*;
+extern crate windows as w;
+use w::HRESULT;
 
 static PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 0x00020016;
 
 pub struct Process {
-    pub startup_info: STARTUPINFOEXW,
+    pub startup_info: STARTUPINFOW,
     pub process_info: PROCESS_INFORMATION,
 }
 
 impl Drop for Process {
     fn drop(&mut self) {
         unsafe {
-            // TODO: check null???
-            DeleteProcThreadAttributeList(self.startup_info.lpAttributeList);
             if self.process_info.hProcess != INVALID_HANDLE_VALUE {
                 CloseHandle(self.process_info.hProcess);
             }
@@ -31,44 +28,51 @@ impl Drop for Process {
     }
 }
 
-pub fn start_process(command: &str, working_dir: &str, hPC: &mut HPCON) -> Process {
-    let mut startup_info = configure_process_thread(hPC, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE);
+pub fn start_process(command: &str, working_dir: &str, h_pc: &mut HPCON) -> Process {
+    let mut startup_info = configure_process_thread(h_pc, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE);
     let process_info = run_process(&mut startup_info.StartupInfo, command, working_dir);
     Process {
-        startup_info: startup_info,
+        startup_info: startup_info.StartupInfo,
         process_info: process_info,
     }
 }
 
-fn configure_process_thread(hPC: &mut HPCON, attributes: usize) -> STARTUPINFOEXW {
-    let mut lpSize: usize = 0;
+fn configure_process_thread(h_pc: &mut HPCON, attributes: usize) -> STARTUPINFOEXW {
+    let mut lp_size: usize = 0;
     let mut success: BOOL;
     unsafe {
         success = InitializeProcThreadAttributeList(
             LPPROC_THREAD_ATTRIBUTE_LIST(null_mut()),
             1,
             0,
-            &mut lpSize,
+            &mut lp_size,
         );
-        if success.as_bool() || lpSize == 0 {
-            panic!("Can't calculate the number of bytes for the attribute list");
-            // TODO: get last_error here;
+        if success.as_bool() || lp_size == 0 {
+            let err = GetLastError();
+            let rv = HRESULT(err.0);
+            panic!(
+                "Can't calculate the number of bytes for the attribute list, {}",
+                rv.message()
+            );
         }
     }
 
-    let mut lpAttributeList: Box<[u8]> = vec![0; lpSize].into_boxed_slice();
+    let mut lp_attribute_list: Box<[u8]> = vec![0; lp_size].into_boxed_slice();
     let start_info = STARTUPINFOEXW {
         StartupInfo: STARTUPINFOW {
             cb: mem::size_of::<STARTUPINFOEXW>() as u32,
             ..Default::default()
         },
-        lpAttributeList: LPPROC_THREAD_ATTRIBUTE_LIST(lpAttributeList.as_mut_ptr().cast::<_>()),
+        lpAttributeList: LPPROC_THREAD_ATTRIBUTE_LIST(lp_attribute_list.as_mut_ptr().cast::<_>()),
     };
 
-    success =
-        unsafe { InitializeProcThreadAttributeList(start_info.lpAttributeList, 1, 0, &mut lpSize) };
+    success = unsafe {
+        InitializeProcThreadAttributeList(start_info.lpAttributeList, 1, 0, &mut lp_size)
+    };
     if !success.as_bool() {
-        panic!("Cant setup attribute list");
+        let err = unsafe { GetLastError() };
+        let rv = HRESULT(err.0);
+        panic!("Can't setup attribute list, {}", rv.message());
     }
 
     success = unsafe {
@@ -76,7 +80,7 @@ fn configure_process_thread(hPC: &mut HPCON, attributes: usize) -> STARTUPINFOEX
             start_info.lpAttributeList,
             0,
             attributes,
-            (hPC as *mut HPCON).cast::<std::ffi::c_void>(),
+            (h_pc as *mut HPCON).cast::<std::ffi::c_void>(),
             std::mem::size_of::<HPCON>(),
             null_mut(),
             null_mut(),
@@ -84,7 +88,9 @@ fn configure_process_thread(hPC: &mut HPCON, attributes: usize) -> STARTUPINFOEX
     };
 
     if !success.as_bool() {
-        panic!("Cant set pseudoconsole thread attribute");
+        let err = unsafe { GetLastError() };
+        let rv = HRESULT(err.0);
+        panic!("Can't setup process attribute, {}", rv.message());
     }
 
     return start_info;
@@ -100,11 +106,11 @@ fn run_process(
             mem::zeroed()
         }
     };
-    let securityAttributeSize = mem::size_of::<SECURITY_ATTRIBUTES>() as u32;
+    let security_attribute_size = mem::size_of::<SECURITY_ATTRIBUTES>() as u32;
     let mut p_sec = SECURITY_ATTRIBUTES::default();
-    p_sec.nLength = securityAttributeSize;
+    p_sec.nLength = security_attribute_size;
     let mut t_sec = SECURITY_ATTRIBUTES::default();
-    t_sec.nLength = securityAttributeSize;
+    t_sec.nLength = security_attribute_size;
 
     let success = unsafe {
         CreateProcessW(
@@ -113,7 +119,7 @@ fn run_process(
             &mut p_sec,
             &mut t_sec,
             false,
-            PROCESS_CREATION_FLAGS::EXTENDED_STARTUPINFO_PRESENT,
+            EXTENDED_STARTUPINFO_PRESENT,
             null_mut(),
             working_dir,
             startup_info,
@@ -123,7 +129,8 @@ fn run_process(
 
     if !success.as_bool() {
         let err = unsafe { GetLastError() };
-        panic!("Cant create process: {:?}", err);
+        let result = HRESULT(err.0);
+        panic!("Cant create process: {:?}", result.message());
     }
     return p_info;
 }

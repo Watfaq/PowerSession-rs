@@ -25,7 +25,9 @@ fn main() {
                         .takes_value(true)
                         .short('c')
                         .long("command")
-                        .default_value("powershell.exe"),
+                        .default_value(
+                            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                        ),
                 ),
         )
         .subcommand(

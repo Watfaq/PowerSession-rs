@@ -1,25 +1,43 @@
 fn main() {
     #[cfg(windows)]
     windows::build!(
-        Windows::Win32::WindowsProgramming::{
+        Windows::Win32::System::WindowsProgramming::{
             CloseHandle,
             STD_HANDLE_TYPE,
             GetStdHandle,
-            PROCESS_CREATION_FLAGS,
+            STD_OUTPUT_HANDLE,
         },
-        Windows::Win32::SystemServices::{
-            ClosePseudoConsole, CreatePseudoConsole,
-            CreatePipe,
+        Windows::Win32::System::Threading::{
             DeleteProcThreadAttributeList,
-            GetConsoleMode, SetConsoleMode,
-            HANDLE, INVALID_HANDLE_VALUE,
-            HPCON, COORD, CONSOLE_SCREEN_BUFFER_INFO, GetConsoleScreenBufferInfo,
-            STARTUPINFOEXW,STARTUPINFOW, PROCESS_INFORMATION, STARTUPINFOW_FLAGS,SECURITY_ATTRIBUTES,
-            CreateProcessW, InitializeProcThreadAttributeList, UpdateProcThreadAttribute,LPPROC_THREAD_ATTRIBUTE_LIST,
-            LPPROC_THREAD_ATTRIBUTE_LIST, BOOL
+            PROCESS_CREATION_FLAGS,
+            STARTUPINFOW,
+            PROCESS_INFORMATION,
+            STARTUPINFOW_FLAGS,
+            LPPROC_THREAD_ATTRIBUTE_LIST,
+            CreateProcessW,
+            InitializeProcThreadAttributeList,
+            UpdateProcThreadAttribute,
+            EXTENDED_STARTUPINFO_PRESENT,
         },
-
-        Windows::Win32::FileSystem::{WriteFile, ReadFile},
-        Windows::Win32::Debug::GetLastError,
+        Windows::Win32::System::Console::{
+            ClosePseudoConsole,
+            CreatePseudoConsole,
+            GetConsoleMode,
+            SetConsoleMode,
+            COORD,
+            CONSOLE_SCREEN_BUFFER_INFO,
+            GetConsoleScreenBufferInfo,
+        },
+        Windows::Win32::System::SystemServices::{
+            CreatePipe,
+            HANDLE, INVALID_HANDLE_VALUE,
+            HPCON,
+            STARTUPINFOEXW, SECURITY_ATTRIBUTES,
+            BOOL,PWSTR
+        },
+        Windows::Win32::Storage::FileSystem::{WriteFile, ReadFile},
+        Windows::Win32::System::Diagnostics::Debug::{
+            GetLastError
+        }
     );
 }

@@ -1,13 +1,12 @@
 extern crate terminal;
 
 use serde::Serialize;
-use std::sync::mpsc::{channel, RecvError, Sender};
+use std::sync::mpsc::channel;
 use std::{
     collections::HashMap,
     env,
     fs::File,
     io::{Read, Write},
-    os::windows::io::{AsRawHandle, FromRawHandle, RawHandle},
     thread,
     time::SystemTime,
 };
@@ -39,7 +38,7 @@ impl Record {
         let cwd = std::env::current_dir().unwrap();
         Record {
             output_writer: Box::new(File::create(filename).expect("Can't create file")),
-            env: env.get_or_insert(HashMap::new()).clone(),
+            env: env.get_or_insert(HashMap::new()).clone(), // this clone() looks wrong??
             command: command,
             terminal: WindowsTerminal::new(cwd.to_str().unwrap().to_string()),
         }
@@ -64,7 +63,8 @@ impl Record {
                 .as_secs(),
             environment: self.env.clone(),
         };
-        self.output_writer
+        let _ = self
+            .output_writer
             .write(serde_json::to_string(&header).unwrap().as_bytes());
 
         let (stdin_tx, stdin_rx) = channel::<u8>();
@@ -75,7 +75,7 @@ impl Record {
             let rv = stdin.read(&mut buf);
             match rv {
                 Ok(n) if n > 0 => {
-                    stdin_tx.send(buf[0]);
+                    let _ = stdin_tx.send(buf[0]);
                 }
                 _ => break,
             }
@@ -87,7 +87,7 @@ impl Record {
 
             match rv {
                 Ok(byte) => {
-                    stdout.write(&[byte]);
+                    let _ = stdout.write(&[byte]);
                 }
                 Err(err) => {
                     println!("{}", err);
@@ -95,7 +95,7 @@ impl Record {
                 }
             }
         });
-        self.terminal.attach_stdout(stdout_tx.clone());
+        self.terminal.attach_stdout(stdout_tx);
         self.terminal.attach_stdin(stdin_rx);
         self.terminal.run(&self.command);
     }

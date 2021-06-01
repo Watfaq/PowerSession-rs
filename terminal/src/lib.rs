@@ -1,6 +1,5 @@
 #[cfg_attr(windows, path = "windows/mod.rs")]
 mod windows;
-#[cfg_attr(windows)]
 pub use crate::windows::terminal::WindowsTerminal;
 
 use std::sync::mpsc::{Receiver, Sender};
