@@ -1,22 +1,23 @@
 extern crate terminal;
 
 use serde::Serialize;
+use std::error::Error;
 use std::sync::mpsc::channel;
+use std::time::SystemTime;
 use std::{
     collections::HashMap,
     env,
     fs::File,
     io::{Read, Write},
     thread,
-    time::SystemTime,
 };
 use terminal::{Terminal, WindowsTerminal};
 
 #[derive(Serialize)]
 struct RecordHeader {
     version: u8,
-    width: u32,
-    height: u32,
+    width: i16,
+    height: i16,
     timestamp: u64,
     #[serde(rename = "env")]
     environment: HashMap<&'static str, String>,
@@ -39,7 +40,7 @@ impl Record {
         Record {
             output_writer: Box::new(File::create(filename).expect("Can't create file")),
             env: env.get_or_insert(HashMap::new()).clone(), // this clone() looks wrong??
-            command: command,
+            command,
             terminal: WindowsTerminal::new(cwd.to_str().unwrap().to_string()),
         }
     }
@@ -55,8 +56,8 @@ impl Record {
     fn record(&mut self) {
         let header = RecordHeader {
             version: 2,
-            width: 10,
-            height: 10,
+            width: self.terminal.width,
+            height: self.terminal.height,
             timestamp: SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .expect("check your machine time")
@@ -69,28 +70,33 @@ impl Record {
 
         let (stdin_tx, stdin_rx) = channel::<u8>();
         let (stdout_tx, stdout_rx) = channel::<u8>();
+
         thread::spawn(move || loop {
             let mut stdin = std::io::stdin();
-            let mut buf = [0, 1];
-            let rv = stdin.read(&mut buf);
+            let mut handle = stdin.lock();
+            let mut buf = [0; 1];
+            let rv = handle.read(&mut buf);
             match rv {
                 Ok(n) if n > 0 => {
-                    let _ = stdin_tx.send(buf[0]);
+                    stdin_tx.send(buf[0]).unwrap();
                 }
-                _ => break,
+                _ => {
+                    println!("pty stdin closed");
+                    break;
+                }
             }
         });
-        let mut stdout = std::io::stdout();
 
         thread::spawn(move || loop {
-            let rv = stdout_rx.recv();
+            let mut stdout = std::io::stdout();
 
+            let rv = stdout_rx.recv();
             match rv {
                 Ok(byte) => {
                     let _ = stdout.write(&[byte]);
                 }
                 Err(err) => {
-                    println!("{}", err);
+                    println!("{}", err.to_string());
                     break;
                 }
             }

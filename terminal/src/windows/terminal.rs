@@ -5,8 +5,8 @@ use super::bindings::Windows::Win32::Storage::FileSystem::*;
 use super::bindings::Windows::Win32::System::Console::*;
 use super::bindings::Windows::Win32::System::Diagnostics::Debug::GetLastError;
 use super::bindings::Windows::Win32::System::SystemServices::*;
-use super::bindings::Windows::Win32::System::WindowsProgramming::*;
 use super::bindings::Windows::Win32::System::Threading::*;
+use super::bindings::Windows::Win32::System::WindowsProgramming::*;
 extern crate windows as w;
 use w::HRESULT;
 
@@ -19,16 +19,9 @@ pub struct WindowsTerminal {
     stdin: HANDLE,
     stdout: HANDLE,
     cwd: String,
-}
 
-impl Drop for WindowsTerminal {
-    fn drop(&mut self) {
-        unsafe {
-            CloseHandle(self.stdin);
-            CloseHandle(self.stdout);
-            ClosePseudoConsole(self.handle);
-        }
-    }
+    pub width: i16,
+    pub height: i16,
 }
 
 impl WindowsTerminal {
@@ -36,12 +29,15 @@ impl WindowsTerminal {
         let mut handle = HPCON::NULL;
         let mut stdin = INVALID_HANDLE_VALUE;
         let mut stdout = INVALID_HANDLE_VALUE;
-        WindowsTerminal::create_pseudo_console_and_pipes(&mut handle, &mut stdin, &mut stdout);
+        let (width, height) =
+            WindowsTerminal::create_pseudo_console_and_pipes(&mut handle, &mut stdin, &mut stdout);
         WindowsTerminal {
             handle,
             stdin,
             stdout,
             cwd,
+            width,
+            height,
         }
     }
 
@@ -49,7 +45,7 @@ impl WindowsTerminal {
         handle: &mut HPCON,
         stdin: &mut HANDLE,
         stdout: &mut HANDLE,
-    ) {
+    ) -> (i16, i16) {
         let mut h_pipe_pty_in = INVALID_HANDLE_VALUE;
         let mut h_pipe_pty_out = INVALID_HANDLE_VALUE;
 
@@ -87,6 +83,8 @@ impl WindowsTerminal {
             if result.is_err() {
                 panic!("Cant create PseudoConsole: {:?}", result.message());
             }
+
+            (console_size.X, console_size.Y)
         }
     }
 }
@@ -94,9 +92,18 @@ impl WindowsTerminal {
 impl Terminal for WindowsTerminal {
     fn run(&mut self, command: &str) -> u32 {
         let process = start_process(command, &self.cwd, &mut self.handle);
-        unsafe { WaitForSingleObject(process.process_info.hProcess, INFINITE); }
+        unsafe {
+            WaitForSingleObject(process.process_info.hProcess, INFINITE);
+
+            CloseHandle(self.stdin);
+            CloseHandle(self.stdout);
+            ClosePseudoConsole(self.handle);
+        }
+
         let mut exit_code: u32 = 0;
-        unsafe { GetExitCodeProcess(process.process_info.hProcess, &mut exit_code); }
+        unsafe {
+            GetExitCodeProcess(process.process_info.hProcess, &mut exit_code);
+        }
         return exit_code;
     }
 
@@ -133,15 +140,11 @@ impl Terminal for WindowsTerminal {
                 let success = ReadFile(stdout, buf.as_mut_ptr() as _, 1, &mut n_read, null_mut());
                 println!("{}, {}", success.as_bool(), n_read);
                 if !success.as_bool() || n_read == 0 {
-                    println!("{}", "cannot read stdout");
+                    println!("cannot read stdout");
                     break;
                 }
             }
-            let rv = tx.send(buf[0]);
-            match rv {
-                Ok(_) => (),
-                Err(_) => break,
-            }
+            tx.send(buf[0]).unwrap();
         });
     }
 }
