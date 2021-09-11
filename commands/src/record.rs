@@ -1,7 +1,6 @@
 extern crate terminal;
 
 use serde::Serialize;
-use std::error::Error;
 use std::sync::mpsc::channel;
 use std::time::SystemTime;
 use std::{
@@ -36,12 +35,16 @@ impl Record {
         mut env: Option<HashMap<&'static str, String>>,
         command: String,
     ) -> Self {
-        let cwd = std::env::current_dir().unwrap();
+        let cwd = std::env::current_dir()
+            .expect("failed to get cwd")
+            .to_str()
+            .unwrap_or("C:\\")
+            .to_string();
         Record {
             output_writer: Box::new(File::create(filename).expect("Can't create file")),
             env: env.get_or_insert(HashMap::new()).clone(), // this clone() looks wrong??
             command,
-            terminal: WindowsTerminal::new(cwd.to_str().unwrap().to_string()),
+            terminal: WindowsTerminal::new(cwd),
         }
     }
     pub fn execute(&mut self) {
@@ -72,7 +75,7 @@ impl Record {
         let (stdout_tx, stdout_rx) = channel::<u8>();
 
         thread::spawn(move || loop {
-            let mut stdin = std::io::stdin();
+            let stdin = std::io::stdin();
             let mut handle = stdin.lock();
             let mut buf = [0; 1];
             let rv = handle.read(&mut buf);

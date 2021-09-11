@@ -1,12 +1,18 @@
 fn main() {
     #[cfg(windows)]
     windows::build!(
-        Windows::Win32::System::WindowsProgramming::{
+        Windows::Win32::Foundation::{
             CloseHandle,
-            STD_HANDLE_TYPE,
-            GetStdHandle,
-            STD_OUTPUT_HANDLE,
+            HANDLE,
+            INVALID_HANDLE_VALUE,
+            BOOL,
+            PWSTR,
+        },
+        Windows::Win32::System::WindowsProgramming::{
             INFINITE,
+        },
+        Windows::Win32::System::Pipes::{
+            CreatePipe,
         },
         Windows::Win32::System::Threading::{
             DeleteProcThreadAttributeList,
@@ -18,11 +24,12 @@ fn main() {
             CreateProcessW,
             InitializeProcThreadAttributeList,
             UpdateProcThreadAttribute,
-            EXTENDED_STARTUPINFO_PRESENT,
             WaitForSingleObject,
             GetExitCodeProcess,
+            STARTUPINFOEXW,
         },
         Windows::Win32::System::Console::{
+            GetStdHandle,
             ClosePseudoConsole,
             CreatePseudoConsole,
             GetConsoleMode,
@@ -30,17 +37,8 @@ fn main() {
             COORD,
             CONSOLE_SCREEN_BUFFER_INFO,
             GetConsoleScreenBufferInfo,
-        },
-        Windows::Win32::System::SystemServices::{
-            CreatePipe,
-            HANDLE, INVALID_HANDLE_VALUE,
             HPCON,
-            STARTUPINFOEXW, SECURITY_ATTRIBUTES,
-            BOOL,PWSTR
         },
         Windows::Win32::Storage::FileSystem::{WriteFile, ReadFile},
-        Windows::Win32::System::Diagnostics::Debug::{
-            GetLastError
-        }
     );
 }
