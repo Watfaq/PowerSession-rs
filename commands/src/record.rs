@@ -38,16 +38,11 @@ impl Record {
         mut env: Option<HashMap<&'static str, String>>,
         command: String,
     ) -> Self {
-        let cwd = std::env::current_dir()
-            .expect("failed to get cwd")
-            .to_str()
-            .unwrap_or("C:\\")
-            .to_string();
         Record {
             output_writer: Box::new(File::create(filename).expect("Can't create file")),
             env: env.get_or_insert(HashMap::new()).clone(), // this clone() looks wrong??
             command,
-            terminal: WindowsTerminal::new(cwd),
+            terminal: WindowsTerminal::new(None),
         }
     }
     pub fn execute(&mut self) {

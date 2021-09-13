@@ -23,6 +23,9 @@ impl Drop for Process {
             if self.process_info.hThread != INVALID_HANDLE_VALUE {
                 CloseHandle(self.process_info.hThread);
             }
+
+            // Cleanup attribute list
+            DeleteProcThreadAttributeList(self.startup_info.lpAttributeList);
         }
     }
 }
@@ -77,7 +80,7 @@ fn configure_process_thread(h_pc: &mut HPCON) -> STARTUPINFOEXW {
             0,
             PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
             h_pc.0 as _,
-            std::mem::size_of_val::<HPCON>(&h_pc),
+            std::mem::size_of::<HPCON>(),
             null_mut(),
             null_mut(),
         )

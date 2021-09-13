@@ -39,6 +39,8 @@ fn main() {
             GetConsoleScreenBufferInfo,
             HPCON,
         },
-        Windows::Win32::Storage::FileSystem::{WriteFile, ReadFile},
+        Windows::Win32::Storage::FileSystem::{
+            WriteFile, ReadFile, CreateFileW,
+        },
     );
 }

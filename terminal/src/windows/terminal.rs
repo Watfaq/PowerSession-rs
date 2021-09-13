@@ -1,11 +1,13 @@
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
+use std::option::Option;
 use std::os::windows::io::FromRawHandle;
 use std::ptr::null_mut;
 use std::sync::mpsc::{Receiver, Sender};
 
 use super::bindings::Windows::Win32::Foundation::*;
+use super::bindings::Windows::Win32::Storage::FileSystem::*;
 use super::bindings::Windows::Win32::System::Console::*;
 use super::bindings::Windows::Win32::System::Pipes::*;
 use super::bindings::Windows::Win32::System::Threading::*;
@@ -30,17 +32,24 @@ pub struct WindowsTerminal {
 }
 
 impl WindowsTerminal {
-    pub fn new(cwd: String) -> Self {
+    pub fn new(cwd: Option<String>) -> Self {
         let mut handle = HPCON::NULL;
         let mut stdin = INVALID_HANDLE_VALUE;
         let mut stdout = INVALID_HANDLE_VALUE;
         let (width, height) =
             WindowsTerminal::create_pseudo_console_and_pipes(&mut handle, &mut stdin, &mut stdout);
+
         WindowsTerminal {
             handle,
             stdin,
             stdout,
-            cwd,
+            cwd: cwd.unwrap_or_else(|| {
+                std::env::current_dir()
+                    .expect("failed to get cwd")
+                    .into_os_string()
+                    .into_string()
+                    .unwrap()
+            }),
             width,
             height,
         }
@@ -55,10 +64,10 @@ impl WindowsTerminal {
         let mut h_pipe_pty_out = INVALID_HANDLE_VALUE;
 
         unsafe {
-            if !CreatePipe(&mut h_pipe_pty_in, &mut *stdin, null_mut(), 0).as_bool() {
+            if !CreatePipe(&mut h_pipe_pty_in, stdin, null_mut(), 0).as_bool() {
                 panic!("cannot create pipe");
             }
-            if !CreatePipe(&mut *stdout, &mut h_pipe_pty_out, null_mut(), 0).as_bool() {
+            if !CreatePipe(stdout, &mut h_pipe_pty_out, null_mut(), 0).as_bool() {
                 panic!("cannot create pipe");
             }
         }
@@ -66,7 +75,16 @@ impl WindowsTerminal {
         let mut console_size = COORD::default();
         let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
         unsafe {
-            let h_console = GetStdHandle(STD_OUTPUT_HANDLE);
+            let h_console = CreateFileW(
+                "CONOUT$",
+                FILE_GENERIC_READ | FILE_GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                std::ptr::null_mut(),
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                HANDLE::NULL,
+            );
+
             if h_console == INVALID_HANDLE_VALUE {
                 let err = HRESULT::from_thread();
                 panic!("Cannot get stdout: {}", err.message());
@@ -82,7 +100,11 @@ impl WindowsTerminal {
             let mut console_mode = CONSOLE_MODE::default();
 
             GetConsoleMode(h_console, &mut console_mode);
-            SetConsoleMode(h_console, console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            if !SetConsoleMode(h_console, console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+                .as_bool()
+            {
+                panic!("Cant Enable VT Processing");
+            }
 
             *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)
                 .expect("Cant create PseudoConsole");
@@ -107,7 +129,6 @@ impl Terminal for WindowsTerminal {
             if !CloseHandle(self.stdout).as_bool() {
                 panic!(HRESULT::from_thread());
             }
-            ClosePseudoConsole(self.handle);
         }
 
         let mut exit_code: u32 = 0;
@@ -144,5 +165,21 @@ impl Terminal for WindowsTerminal {
                 _ => break,
             }
         });
+    }
+}
+
+impl Drop for WindowsTerminal {
+    fn drop(&mut self) {
+        unsafe {
+            if self.handle != HPCON::NULL {
+                ClosePseudoConsole(self.handle);
+            }
+            if self.stdin != INVALID_HANDLE_VALUE {
+                CloseHandle(self.stdin);
+            }
+            if self.stdout != INVALID_HANDLE_VALUE {
+                CloseHandle(self.stdout);
+            }
+        }
     }
 }
