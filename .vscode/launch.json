@@ -19,10 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [
-                "rec",
-                "a.txt"
-            ],
+            "args": [],
             "cwd": "${workspaceFolder}"
         },
         {
@@ -39,6 +36,44 @@
                 "filter": {
                     "name": "PowerSession",
                     "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'commands'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=commands"
+                ],
+                "filter": {
+                    "name": "commands",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'terminal'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=terminal"
+                ],
+                "filter": {
+                    "name": "terminal",
+                    "kind": "lib"
                 }
             },
             "args": [],

@@ -95,6 +95,7 @@ impl Record {
             match rv {
                 Ok(b) => {
                     stdout.write(&b.0[..b.1]).expect("failed to write stdout");
+                    stdout.flush()
                 }
                 Err(err) => {
                     println!("{}", err.to_string());
