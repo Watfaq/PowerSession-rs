@@ -1,8 +1,11 @@
+use std::fs::File;
+use std::io::Read;
+use std::io::Write;
+use std::os::windows::io::FromRawHandle;
 use std::ptr::null_mut;
 use std::sync::mpsc::{Receiver, Sender};
 
 use super::bindings::Windows::Win32::Foundation::*;
-use super::bindings::Windows::Win32::Storage::FileSystem::*;
 use super::bindings::Windows::Win32::System::Console::*;
 use super::bindings::Windows::Win32::System::Pipes::*;
 use super::bindings::Windows::Win32::System::Threading::*;
@@ -14,6 +17,7 @@ use w::HRESULT;
 use super::process::start_process;
 
 use crate::Terminal;
+use std::sync::Arc;
 
 pub struct WindowsTerminal {
     handle: HPCON,
@@ -51,10 +55,10 @@ impl WindowsTerminal {
         let mut h_pipe_pty_out = INVALID_HANDLE_VALUE;
 
         unsafe {
-            if !CreatePipe(&mut h_pipe_pty_in, stdin, null_mut(), 0).as_bool() {
+            if !CreatePipe(&mut h_pipe_pty_in, &mut *stdin, null_mut(), 0).as_bool() {
                 panic!("cannot create pipe");
             }
-            if !CreatePipe(stdout, &mut h_pipe_pty_out, null_mut(), 0).as_bool() {
+            if !CreatePipe(&mut *stdout, &mut h_pipe_pty_out, null_mut(), 0).as_bool() {
                 panic!("cannot create pipe");
             }
         }
@@ -75,8 +79,17 @@ impl WindowsTerminal {
                 console_size.Y = 80;
             }
 
+            let mut console_mode = CONSOLE_MODE::default();
+
+            GetConsoleMode(h_console, &mut console_mode);
+            SetConsoleMode(h_console, console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+
             *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)
                 .expect("Cant create PseudoConsole");
+
+            CloseHandle(h_pipe_pty_in);
+            CloseHandle(h_pipe_pty_out);
+
             (console_size.X, console_size.Y)
         }
     }
@@ -104,22 +117,13 @@ impl Terminal for WindowsTerminal {
         return exit_code;
     }
 
-    fn attach_stdin(&self, rx: Receiver<u8>) {
-        let stdin = self.stdin;
+    fn attach_stdin(&self, rx: Receiver<(Arc<[u8; 1024]>, usize)>) {
+        let mut stdin = unsafe { File::from_raw_handle(self.stdin.0 as _) };
         std::thread::spawn(move || loop {
             let rv = rx.recv();
             match rv {
                 Ok(b) => {
-                    let mut buf = [b, 1];
-                    unsafe {
-                        WriteFile(
-                            stdin,
-                            buf.as_mut_ptr() as _,
-                            1 as u32,
-                            null_mut(),
-                            null_mut(),
-                        );
-                    }
+                    stdin.write_all(&b.0[..b.1]).expect("failed to write stdin");
                 }
                 Err(err) => {
                     println!("cannot receive on rx: {}", err);
@@ -128,20 +132,17 @@ impl Terminal for WindowsTerminal {
             }
         });
     }
-    fn attach_stdout(&self, tx: Sender<u8>) {
-        let stdout = self.stdout;
+    fn attach_stdout(&self, tx: Sender<(Arc<[u8; 1024]>, usize)>) {
+        let mut stdout = unsafe { File::from_raw_handle(self.stdout.0 as _) };
+
         std::thread::spawn(move || loop {
-            let mut buf = [0; 1];
-            let mut n_read: u32 = 0;
-            unsafe {
-                let success = ReadFile(stdout, buf.as_mut_ptr() as _, 1, &mut n_read, null_mut());
-                println!("{}, {}", success.as_bool(), n_read);
-                if !success.as_bool() || n_read == 0 {
-                    println!("cannot read stdout");
-                    break;
+            let mut buf = [0; 1024];
+            match stdout.read(&mut buf) {
+                Ok(n) if n > 0 => {
+                    tx.send((Arc::from(buf), n)).unwrap();
                 }
+                _ => break,
             }
-            tx.send(buf[0]).unwrap();
         });
     }
 }

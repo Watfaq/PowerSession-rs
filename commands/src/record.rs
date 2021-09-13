@@ -1,6 +1,5 @@
 extern crate terminal;
 
-use serde::Serialize;
 use std::sync::mpsc::channel;
 use std::time::SystemTime;
 use std::{
@@ -8,8 +7,12 @@ use std::{
     env,
     fs::File,
     io::{Read, Write},
+    sync::Arc,
     thread,
 };
+
+use serde::Serialize;
+
 use terminal::{Terminal, WindowsTerminal};
 
 #[derive(Serialize)]
@@ -71,17 +74,17 @@ impl Record {
             .output_writer
             .write(serde_json::to_string(&header).unwrap().as_bytes());
 
-        let (stdin_tx, stdin_rx) = channel::<u8>();
-        let (stdout_tx, stdout_rx) = channel::<u8>();
+        let (stdin_tx, stdin_rx) = channel::<(Arc<[u8; 1024]>, usize)>();
+        let (stdout_tx, stdout_rx) = channel::<(Arc<[u8; 1024]>, usize)>();
 
         thread::spawn(move || loop {
             let stdin = std::io::stdin();
             let mut handle = stdin.lock();
-            let mut buf = [0; 1];
+            let mut buf = [0; 1024];
             let rv = handle.read(&mut buf);
             match rv {
                 Ok(n) if n > 0 => {
-                    stdin_tx.send(buf[0]).unwrap();
+                    stdin_tx.send((Arc::from(buf), n)).unwrap();
                 }
                 _ => {
                     println!("pty stdin closed");
@@ -95,8 +98,8 @@ impl Record {
 
             let rv = stdout_rx.recv();
             match rv {
-                Ok(byte) => {
-                    let _ = stdout.write(&[byte]);
+                Ok(b) => {
+                    stdout.write(&b.0[..b.1]).expect("failed to write stdout");
                 }
                 Err(err) => {
                     println!("{}", err.to_string());

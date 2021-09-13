@@ -25,7 +25,7 @@ fn main() {
                         .takes_value(true)
                         .short('c')
                         .long("command")
-                        .default_value("ping.exe"),
+                        .default_value("powershell.exe"),
                 ),
         )
         .subcommand(

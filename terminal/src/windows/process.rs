@@ -7,7 +7,7 @@ use super::bindings::Windows::Win32::System::Threading::*;
 extern crate windows as w;
 use w::HRESULT;
 
-static PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 0x00020016;
+static PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 0x0002_0016;
 
 pub struct Process {
     pub startup_info: STARTUPINFOEXW,
@@ -37,7 +37,7 @@ pub fn start_process(command: &str, working_dir: &str, h_pc: &mut HPCON) -> Proc
 }
 
 fn configure_process_thread(h_pc: &mut HPCON) -> STARTUPINFOEXW {
-    let mut start_info: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
+    let mut start_info = STARTUPINFOEXW::default();
     start_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
 
     let mut lp_size: usize = 0;
@@ -76,8 +76,8 @@ fn configure_process_thread(h_pc: &mut HPCON) -> STARTUPINFOEXW {
             start_info.lpAttributeList,
             0,
             PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-            (h_pc as *mut HPCON).cast::<_>(),
-            std::mem::size_of::<HPCON>(),
+            h_pc.0 as _,
+            std::mem::size_of_val::<HPCON>(&h_pc),
             null_mut(),
             null_mut(),
         )
@@ -96,7 +96,7 @@ fn run_process(
     command: &str,
     working_dir: &str,
 ) -> PROCESS_INFORMATION {
-    let mut p_info: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+    let mut p_info = PROCESS_INFORMATION::default();
 
     let success = unsafe {
         CreateProcessW(
