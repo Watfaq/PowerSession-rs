@@ -69,13 +69,13 @@ impl Record {
             .output_writer
             .write(serde_json::to_string(&header).unwrap().as_bytes());
 
-        let (stdin_tx, stdin_rx) = channel::<(Arc<[u8; 1024]>, usize)>();
+        let (stdin_tx, stdin_rx) = channel::<(Arc<[u8; 1]>, usize)>();
         let (stdout_tx, stdout_rx) = channel::<(Arc<[u8; 1024]>, usize)>();
 
         thread::spawn(move || loop {
             let stdin = std::io::stdin();
             let mut handle = stdin.lock();
-            let mut buf = [0; 1024];
+            let mut buf = [0; 1];
             let rv = handle.read(&mut buf);
             match rv {
                 Ok(n) if n > 0 => {
@@ -95,7 +95,7 @@ impl Record {
             match rv {
                 Ok(b) => {
                     stdout.write(&b.0[..b.1]).expect("failed to write stdout");
-                    stdout.flush()
+                    stdout.flush().expect("failed to flush stdout");
                 }
                 Err(err) => {
                     println!("{}", err.to_string());
@@ -105,6 +105,6 @@ impl Record {
         });
         self.terminal.attach_stdin(stdin_rx);
         self.terminal.attach_stdout(stdout_tx);
-        self.terminal.run(&self.command);
+        self.terminal.run(&self.command).unwrap();
     }
 }

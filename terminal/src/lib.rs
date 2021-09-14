@@ -5,9 +5,12 @@ pub use crate::windows::terminal::WindowsTerminal;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 
+extern crate windows as w;
+use w::HRESULT;
+
 pub trait Terminal {
-    fn run(&mut self, command: &str) -> u32;
-    fn attach_stdin(&self, rx: Receiver<(Arc<[u8; 1024]>, usize)>);
+    fn run(&mut self, command: &str) -> w::Result<u32>;
+    fn attach_stdin(&self, rx: Receiver<(Arc<[u8; 1]>, usize)>);
     fn attach_stdout(&self, tx: Sender<(Arc<[u8; 1024]>, usize)>);
 }
 

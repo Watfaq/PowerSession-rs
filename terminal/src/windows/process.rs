@@ -31,15 +31,16 @@ impl Drop for Process {
 }
 
 pub fn start_process(command: &str, working_dir: &str, h_pc: &mut HPCON) -> Process {
-    let mut startup_info = configure_process_thread(h_pc);
-    let process_info = run_process(&mut startup_info, command, working_dir);
+    let mut startup_info = configure_process_thread(h_pc).expect("couldn't setup startup_info");
+    let process_info =
+        run_process(&mut startup_info, command, working_dir).expect("couldn't start process");
     Process {
         startup_info,
         process_info,
     }
 }
 
-fn configure_process_thread(h_pc: &mut HPCON) -> STARTUPINFOEXW {
+fn configure_process_thread(h_pc: &mut HPCON) -> w::Result<STARTUPINFOEXW> {
     let mut start_info = STARTUPINFOEXW::default();
     start_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
 
@@ -55,10 +56,7 @@ fn configure_process_thread(h_pc: &mut HPCON) -> STARTUPINFOEXW {
         // Note: This initial call will return an error by design. This is expected behavior.
         if success.as_bool() || lp_size == 0 {
             let err = HRESULT::from_thread();
-            panic!(
-                "Can't calculate the number of bytes for the attribute list, {}",
-                err.message()
-            );
+            return Err(err.into());
         }
     }
 
@@ -71,7 +69,7 @@ fn configure_process_thread(h_pc: &mut HPCON) -> STARTUPINFOEXW {
     };
     if !success.as_bool() {
         let err = HRESULT::from_thread();
-        panic!("Can't setup attribute list, {}", err.message());
+        return Err(err.into());
     }
 
     success = unsafe {
@@ -88,17 +86,17 @@ fn configure_process_thread(h_pc: &mut HPCON) -> STARTUPINFOEXW {
 
     if !success.as_bool() {
         let err = HRESULT::from_thread();
-        panic!("Can't setup process attribute, {}", err.message());
+        return Err(err.into());
     }
 
-    return start_info;
+    Ok(start_info)
 }
 
 fn run_process(
     startup_info: &mut STARTUPINFOEXW,
     command: &str,
     working_dir: &str,
-) -> PROCESS_INFORMATION {
+) -> w::Result<PROCESS_INFORMATION> {
     let mut p_info = PROCESS_INFORMATION::default();
 
     let success = unsafe {
@@ -118,7 +116,8 @@ fn run_process(
 
     if !success.as_bool() {
         let err = HRESULT::from_thread();
-        panic!("Cant create process: {:?}", err.message());
+        return Err(err.into());
     }
-    return p_info;
+
+    Ok(p_info)
 }

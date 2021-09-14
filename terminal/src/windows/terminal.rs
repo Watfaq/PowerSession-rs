@@ -37,7 +37,8 @@ impl WindowsTerminal {
         let mut stdin = INVALID_HANDLE_VALUE;
         let mut stdout = INVALID_HANDLE_VALUE;
         let (width, height) =
-            WindowsTerminal::create_pseudo_console_and_pipes(&mut handle, &mut stdin, &mut stdout);
+            WindowsTerminal::create_pseudo_console_and_pipes(&mut handle, &mut stdin, &mut stdout)
+                .expect("failed to create pseduo console");
 
         WindowsTerminal {
             handle,
@@ -59,17 +60,13 @@ impl WindowsTerminal {
         handle: &mut HPCON,
         stdin: &mut HANDLE,  // the stdin to write input to PTY
         stdout: &mut HANDLE, // the stdout to read output from PTY
-    ) -> (i16, i16) {
+    ) -> w::Result<(i16, i16)> {
         let mut h_pipe_pty_in = INVALID_HANDLE_VALUE;
         let mut h_pipe_pty_out = INVALID_HANDLE_VALUE;
 
         unsafe {
-            if !CreatePipe(&mut h_pipe_pty_in, stdin, null_mut(), 0).as_bool() {
-                panic!("cannot create pipe");
-            }
-            if !CreatePipe(stdout, &mut h_pipe_pty_out, null_mut(), 0).as_bool() {
-                panic!("cannot create pipe");
-            }
+            CreatePipe(&mut h_pipe_pty_in, stdin, null_mut(), 0).ok()?;
+            CreatePipe(stdout, &mut h_pipe_pty_out, null_mut(), 0).ok()?;
         }
 
         let mut console_size = COORD::default();
@@ -86,9 +83,9 @@ impl WindowsTerminal {
             );
 
             if h_console == INVALID_HANDLE_VALUE {
-                let err = HRESULT::from_thread();
-                panic!("Cannot get stdout: {}", err.message());
+                return Err(HRESULT::from_thread().into());
             }
+
             if GetConsoleScreenBufferInfo(h_console, &mut csbi).as_bool() {
                 console_size.X = csbi.srWindow.Right - csbi.srWindow.Left + 1;
                 console_size.Y = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
@@ -99,12 +96,9 @@ impl WindowsTerminal {
 
             let mut console_mode = CONSOLE_MODE::default();
 
-            GetConsoleMode(h_console, &mut console_mode);
-            if !SetConsoleMode(h_console, console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
-                .as_bool()
-            {
-                panic!("Cant Enable VT Processing");
-            }
+            let not_raw_mode_mask = ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT;
+            GetConsoleMode(h_console, &mut console_mode).ok()?;
+            SetConsoleMode(h_console, console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING).ok()?;
 
             *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)
                 .expect("Cant create PseudoConsole");
@@ -112,33 +106,29 @@ impl WindowsTerminal {
             CloseHandle(h_pipe_pty_in);
             CloseHandle(h_pipe_pty_out);
 
-            (console_size.X, console_size.Y)
+            Ok((console_size.X, console_size.Y))
         }
     }
 }
 
 impl Terminal for WindowsTerminal {
-    fn run(&mut self, command: &str) -> u32 {
+    fn run(&mut self, command: &str) -> w::Result<u32> {
         let process = start_process(command, &self.cwd, &mut self.handle);
         unsafe {
             WaitForSingleObject(process.process_info.hProcess, INFINITE);
 
-            if !CloseHandle(self.stdin).as_bool() {
-                panic!(HRESULT::from_thread());
-            }
-            if !CloseHandle(self.stdout).as_bool() {
-                panic!(HRESULT::from_thread());
-            }
-        }
+            CloseHandle(self.stdin).ok()?;
+            CloseHandle(self.stdout).ok()?;
 
-        let mut exit_code: u32 = 0;
-        unsafe {
+            let mut exit_code: u32 = 0;
+
             GetExitCodeProcess(process.process_info.hProcess, &mut exit_code);
-        }
-        return exit_code;
+
+            return Ok(exit_code);
+        };
     }
 
-    fn attach_stdin(&self, rx: Receiver<(Arc<[u8; 1024]>, usize)>) {
+    fn attach_stdin(&self, rx: Receiver<(Arc<[u8; 1]>, usize)>) {
         let mut stdin = unsafe { File::from_raw_handle(self.stdin.0 as _) };
         std::thread::spawn(move || loop {
             let rv = rx.recv();
