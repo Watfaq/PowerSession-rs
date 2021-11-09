@@ -98,7 +98,11 @@ impl WindowsTerminal {
 
             let not_raw_mode_mask = ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT;
             GetConsoleMode(h_console, &mut console_mode).ok()?;
-            SetConsoleMode(h_console, console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING).ok()?;
+            SetConsoleMode(
+                h_console,
+                console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING & !not_raw_mode_mask,
+            )
+            .ok()?;
 
             *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)
                 .expect("Cant create PseudoConsole");

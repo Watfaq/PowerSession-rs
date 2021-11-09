@@ -8,8 +8,8 @@ edition = "2018"
 
 [dependencies]
 #[cfg(windows)]
-windows = "0.19.0"
+windows = {git = "https://github.com/microsoft/windows-rs.git", branch="master"}
 
 [build-dependencies]
 #[cfg(windows)]
-windows = "0.19.0"
+windows = {git = "https://github.com/microsoft/windows-rs.git", branch="master"}
