@@ -6,20 +6,28 @@ use std::os::windows::io::FromRawHandle;
 use std::ptr::null_mut;
 use std::sync::mpsc::{Receiver, Sender};
 
-use super::bindings::Windows::Win32::Foundation::*;
-use super::bindings::Windows::Win32::Storage::FileSystem::*;
-use super::bindings::Windows::Win32::System::Console::*;
-use super::bindings::Windows::Win32::System::Pipes::*;
-use super::bindings::Windows::Win32::System::Threading::*;
-use super::bindings::Windows::Win32::System::WindowsProgramming::*;
-
-extern crate windows as w;
-use w::HRESULT;
-
 use super::process::start_process;
 
 use crate::Terminal;
 use std::sync::Arc;
+use windows::core::{Error, Result};
+use windows::Win32::Foundation::{
+    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE, INVALID_HANDLE_VALUE,
+};
+use windows::Win32::Storage::FileSystem::{
+    CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+};
+use windows::Win32::System::Console::{
+    ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo,
+    SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD, ENABLE_ECHO_INPUT,
+    ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON,
+};
+use windows::Win32::System::Pipes::CreatePipe;
+use windows::Win32::System::Threading::{
+    GetCurrentProcess, GetExitCodeProcess, WaitForSingleObject,
+};
+use windows::Win32::System::WindowsProgramming::INFINITE;
 
 pub struct WindowsTerminal {
     handle: HPCON,
@@ -33,7 +41,7 @@ pub struct WindowsTerminal {
 
 impl WindowsTerminal {
     pub fn new(cwd: Option<String>) -> Self {
-        let mut handle = HPCON::NULL;
+        let mut handle = HPCON::default();
         let mut stdin = INVALID_HANDLE_VALUE;
         let mut stdout = INVALID_HANDLE_VALUE;
         let (width, height) =
@@ -60,7 +68,7 @@ impl WindowsTerminal {
         handle: &mut HPCON,
         stdin: &mut HANDLE,  // the stdin to write input to PTY
         stdout: &mut HANDLE, // the stdout to read output from PTY
-    ) -> w::Result<(i16, i16)> {
+    ) -> Result<(i16, i16)> {
         let mut h_pipe_pty_in = INVALID_HANDLE_VALUE;
         let mut h_pipe_pty_out = INVALID_HANDLE_VALUE;
 
@@ -79,11 +87,12 @@ impl WindowsTerminal {
                 std::ptr::null_mut(),
                 OPEN_EXISTING,
                 FILE_ATTRIBUTE_NORMAL,
-                HANDLE::NULL,
-            );
+                HANDLE::default(),
+            )
+            .unwrap();
 
             if h_console == INVALID_HANDLE_VALUE {
-                return Err(HRESULT::from_thread().into());
+                return Err(Error::from_win32());
             }
 
             if GetConsoleScreenBufferInfo(h_console, &mut csbi).as_bool() {
@@ -97,15 +106,19 @@ impl WindowsTerminal {
             let mut console_mode = CONSOLE_MODE::default();
 
             let not_raw_mode_mask = ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT;
-            GetConsoleMode(h_console, &mut console_mode).ok()?;
-            SetConsoleMode(
+            if !GetConsoleMode(h_console, &mut console_mode).as_bool() {
+                return Err(Error::from_win32());
+            }
+            if !SetConsoleMode(
                 h_console,
                 console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING & !not_raw_mode_mask,
             )
-            .ok()?;
+            .as_bool()
+            {
+                return Err(Error::from_win32());
+            }
 
-            *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)
-                .expect("Cant create PseudoConsole");
+            *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)?;
 
             CloseHandle(h_pipe_pty_in);
             CloseHandle(h_pipe_pty_out);
@@ -113,14 +126,30 @@ impl WindowsTerminal {
             Ok((console_size.X, console_size.Y))
         }
     }
+
+    fn clone_handle(handle: HANDLE) -> Result<HANDLE> {
+        let mut rv = HANDLE::default();
+        unsafe {
+            DuplicateHandle(
+                GetCurrentProcess(),
+                handle,
+                GetCurrentProcess(),
+                &mut rv,
+                0,
+                false,
+                DUPLICATE_SAME_ACCESS,
+            )
+            .ok()?;
+        }
+        Ok(rv)
+    }
 }
 
 impl Terminal for WindowsTerminal {
-    fn run(&mut self, command: &str) -> w::Result<u32> {
+    fn run(&mut self, command: &str) -> crate::Result<u32> {
         let process = start_process(command, &self.cwd, &mut self.handle);
         unsafe {
             WaitForSingleObject(process.process_info.hProcess, INFINITE);
-
             CloseHandle(self.stdin).ok()?;
             CloseHandle(self.stdout).ok()?;
 
@@ -133,31 +162,41 @@ impl Terminal for WindowsTerminal {
     }
 
     fn attach_stdin(&self, rx: Receiver<(Arc<[u8; 1]>, usize)>) {
-        let mut stdin = unsafe { File::from_raw_handle(self.stdin.0 as _) };
+        if self.stdin.is_invalid() {
+            panic!("input handle invalid");
+        }
+        let stdin = WindowsTerminal::clone_handle(self.stdin).unwrap();
+
         std::thread::spawn(move || loop {
-            let rv = rx.recv();
-            match rv {
-                Ok(b) => {
-                    stdin.write_all(&b.0[..b.1]).expect("failed to write stdin");
-                }
-                Err(err) => {
-                    println!("cannot receive on rx: {}", err);
+            let (buf, n) = rx.recv().unwrap();
+
+            unsafe {
+                if !WriteFile(stdin, buf.as_ptr() as _, n as _, &mut 0, null_mut()).as_bool() {
                     break;
                 }
             }
         });
     }
     fn attach_stdout(&self, tx: Sender<(Arc<[u8; 1024]>, usize)>) {
-        let mut stdout = unsafe { File::from_raw_handle(self.stdout.0 as _) };
+        if self.stdout.is_invalid() {
+            panic!("stdout handle invalid");
+        }
+
+        let stdout = WindowsTerminal::clone_handle(self.stdout).unwrap();
 
         std::thread::spawn(move || loop {
             let mut buf = [0; 1024];
-            match stdout.read(&mut buf) {
-                Ok(n) if n > 0 => {
-                    tx.send((Arc::from(buf), n)).unwrap();
+            let mut n_read = 0;
+            unsafe {
+                if !ReadFile(stdout, buf.as_mut_ptr() as _, 1024, &mut n_read, null_mut()).as_bool()
+                {
+                    // The stdout is closed. send 0 to indicate read end.
+                    tx.send((Arc::from(buf), n_read as _)).unwrap();
+                    break;
                 }
-                _ => break,
             }
+
+            tx.send((Arc::from(buf), n_read as _)).unwrap();
         });
     }
 }
@@ -165,7 +204,7 @@ impl Terminal for WindowsTerminal {
 impl Drop for WindowsTerminal {
     fn drop(&mut self) {
         unsafe {
-            if self.handle != HPCON::NULL {
+            if !self.handle.is_invalid() {
                 ClosePseudoConsole(self.handle);
             }
             if self.stdin != INVALID_HANDLE_VALUE {

@@ -74,12 +74,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "const-sha1"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb58b6451e8c2a812ad979ed1d83378caa5e927eef2622017a45f251457c2c9d"
-
-[[package]]
 name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -321,40 +315,37 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows"
-version = "0.19.0"
-source = "git+https://github.com/microsoft/windows-rs.git?branch=master#25a4e462ac92cb7cb2daabf14d81820c32456616"
+version = "0.37.0"
+source = "git+https://github.com/microsoft/windows-rs.git#c396e5f2e3474990eecc1b3885c03e4288552906"
 dependencies = [
- "const-sha1",
- "windows_gen",
- "windows_macros",
+ "windows_aarch64_msvc",
+ "windows_i686_gnu",
+ "windows_i686_msvc",
+ "windows_x86_64_gnu",
+ "windows_x86_64_msvc",
 ]
 
 [[package]]
-name = "windows_gen"
-version = "0.19.0"
-source = "git+https://github.com/microsoft/windows-rs.git?branch=master#25a4e462ac92cb7cb2daabf14d81820c32456616"
-dependencies = [
- "windows_quote",
- "windows_reader",
-]
+name = "windows_aarch64_msvc"
+version = "0.37.0"
+source = "git+https://github.com/microsoft/windows-rs.git#c396e5f2e3474990eecc1b3885c03e4288552906"
 
 [[package]]
-name = "windows_macros"
-version = "0.19.0"
-source = "git+https://github.com/microsoft/windows-rs.git?branch=master#25a4e462ac92cb7cb2daabf14d81820c32456616"
-dependencies = [
- "syn",
- "windows_gen",
- "windows_quote",
- "windows_reader",
-]
+name = "windows_i686_gnu"
+version = "0.37.0"
+source = "git+https://github.com/microsoft/windows-rs.git#c396e5f2e3474990eecc1b3885c03e4288552906"
 
 [[package]]
-name = "windows_quote"
-version = "0.19.0"
-source = "git+https://github.com/microsoft/windows-rs.git?branch=master#25a4e462ac92cb7cb2daabf14d81820c32456616"
+name = "windows_i686_msvc"
+version = "0.37.0"
+source = "git+https://github.com/microsoft/windows-rs.git#c396e5f2e3474990eecc1b3885c03e4288552906"
 
 [[package]]
-name = "windows_reader"
-version = "0.19.0"
-source = "git+https://github.com/microsoft/windows-rs.git?branch=master#25a4e462ac92cb7cb2daabf14d81820c32456616"
+name = "windows_x86_64_gnu"
+version = "0.37.0"
+source = "git+https://github.com/microsoft/windows-rs.git#c396e5f2e3474990eecc1b3885c03e4288552906"
+
+[[package]]
+name = "windows_x86_64_msvc"
+version = "0.37.0"
+source = "git+https://github.com/microsoft/windows-rs.git#c396e5f2e3474990eecc1b3885c03e4288552906"
