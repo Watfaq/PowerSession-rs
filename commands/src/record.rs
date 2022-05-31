@@ -4,7 +4,7 @@ use std::borrow::Borrow;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
-use std::sync::{Mutex, RwLock};
+use std::sync::Mutex;
 use std::time::SystemTime;
 use std::{
     collections::HashMap,
@@ -16,19 +16,10 @@ use std::{
     thread,
 };
 
-use serde::Serialize;
-
+use crate::types::LineItem;
 use terminal::{Terminal, WindowsTerminal};
 
-#[derive(Serialize)]
-struct RecordHeader {
-    version: u8,
-    width: i16,
-    height: i16,
-    timestamp: u64,
-    #[serde(rename = "env")]
-    environment: HashMap<String, String>,
-}
+use super::types::RecordHeader;
 
 pub struct Record {
     output_writer: Arc<Mutex<Box<dyn Write + Send + Sync>>>,
@@ -37,13 +28,6 @@ pub struct Record {
     command: String,
     #[cfg(windows)]
     terminal: WindowsTerminal,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
-enum LineItem {
-    String(String),
-    F64(f64),
 }
 
 impl Record {
