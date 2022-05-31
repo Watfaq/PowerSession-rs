@@ -1,6 +1,10 @@
 extern crate terminal;
 
+use std::borrow::Borrow;
+use std::path::Path;
+use std::rc::Rc;
 use std::sync::mpsc::channel;
+use std::sync::{Mutex, RwLock};
 use std::time::SystemTime;
 use std::{
     collections::HashMap,
@@ -16,28 +20,6 @@ use serde::Serialize;
 
 use terminal::{Terminal, WindowsTerminal};
 
-trait OutputWriter {
-    fn write(&mut self, data: String) -> io::Result<()>;
-}
-
-struct FileOutputWriter {
-    fd: File,
-}
-
-impl FileOutputWriter {
-    fn new(file: String) -> Self {
-        FileOutputWriter {
-            fd: File::create(file).expect("unable to open file"),
-        }
-    }
-}
-
-impl OutputWriter for FileOutputWriter {
-    fn write(&mut self, data: String) -> io::Result<()> {
-        self.fd.write_all(data.as_bytes())
-    }
-}
-
 #[derive(Serialize)]
 struct RecordHeader {
     version: u8,
@@ -49,7 +31,8 @@ struct RecordHeader {
 }
 
 pub struct Record {
-    output_writer: Box<dyn OutputWriter>,
+    output_writer: Arc<Mutex<Box<dyn Write + Send + Sync>>>,
+    filename: String,
     env: HashMap<String, String>,
     command: String,
     #[cfg(windows)]
@@ -57,9 +40,10 @@ pub struct Record {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(untagged)]
 enum LineItem {
     String(String),
-    U64(u64),
+    F64(f64),
 }
 
 impl Record {
@@ -68,8 +52,13 @@ impl Record {
         mut env: Option<HashMap<String, String>>,
         command: String,
     ) -> Self {
+        if Path::new(&filename).exists() {
+            panic!("file `{}` exists", filename);
+        }
+
         Record {
-            output_writer: Box::new(FileOutputWriter::new(filename)),
+            output_writer: Arc::new(Mutex::new(Box::new(File::create(&filename).unwrap()))),
+            filename,
             env: env.get_or_insert(HashMap::new()).clone(), // this clone() looks wrong??
             command,
             terminal: WindowsTerminal::new(None),
@@ -87,21 +76,24 @@ impl Record {
     }
 
     fn record(&mut self) {
-        let record_start_time = SystemTime::now()
+        let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("check your machine time")
-            .as_secs();
+            .expect("check your machine time");
+
+        let record_start_time = now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9;
 
         let header = RecordHeader {
             version: 2,
             width: self.terminal.width,
             height: self.terminal.height,
-            timestamp: record_start_time,
+            timestamp: record_start_time as u64,
             environment: self.env.clone(),
         };
 
         self.output_writer
-            .write(serde_json::to_string(&header).unwrap())
+            .lock()
+            .unwrap()
+            .write((serde_json::to_string(&header).unwrap() + "\n").as_bytes())
             .unwrap();
 
         let (stdin_tx, stdin_rx) = channel::<(Arc<[u8; 1]>, usize)>();
@@ -123,6 +115,9 @@ impl Record {
             }
         });
 
+        let mut output_writer = self.output_writer.clone();
+        let filename = self.filename.clone();
+
         thread::spawn(move || loop {
             let mut stdout = std::io::stdout();
 
@@ -131,23 +126,29 @@ impl Record {
                 Ok((buf, len)) => {
                     let now = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
-                        .expect("check your machine time")
-                        .as_secs();
-                    let ts = now - record_start_time;
+                        .expect("check your machine time");
+
+                    let ts =
+                        now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9 - record_start_time;
                     let chars = String::from_utf8(buf[..len].to_vec()).unwrap();
                     let mut data = vec![
-                        LineItem::U64(ts),
+                        LineItem::F64(ts),
                         LineItem::String("o".to_string()),
                         LineItem::String(chars),
                     ];
-                    let line = serde_json::to_string(&data).unwrap();
-                    self.output_writer.write(line).unwrap();
+                    let line = serde_json::to_string(&data).unwrap() + "\n";
+                    output_writer
+                        .lock()
+                        .unwrap()
+                        .write(line.as_bytes())
+                        .unwrap();
 
                     stdout.write(&buf[..len]).expect("failed to write stdout");
                     stdout.flush().expect("failed to flush stdout");
                 }
                 Err(err) => {
                     // the stdout_rx closed, mostly due to process exited.
+                    println!("Record finished. Result saved to file {}", filename);
                     break;
                 }
             }

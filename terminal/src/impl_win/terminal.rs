@@ -87,7 +87,7 @@ impl WindowsTerminal {
             }
 
             // TODO: fix panic here.
-            // WindowsTerminal::set_raw_mode()?;
+            WindowsTerminal::set_raw_mode()?;
 
             *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)?;
 
@@ -120,16 +120,15 @@ impl WindowsTerminal {
 
         let handle = GetStdHandle(STD_INPUT_HANDLE).expect("get stdin handle");
 
-        GetConsoleMode(handle, &mut console_mode).ok()?;
+        GetConsoleMode(handle, &mut console_mode).expect("get console mode");
 
         console_mode &= !ENABLE_ECHO_INPUT;
         console_mode &= !ENABLE_LINE_INPUT;
         console_mode &= !ENABLE_PROCESSED_INPUT;
 
-        console_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
-        console_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        SetConsoleMode(handle, console_mode).expect("set console mode");
 
-        SetConsoleMode(handle, console_mode).ok()
+        Ok(())
     }
 
     unsafe fn get_console_size() -> Result<(i16, i16)> {
