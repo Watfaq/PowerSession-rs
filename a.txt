@@ -1,1 +1,0 @@
-{"version":2,"width":248,"height":14,"timestamp":1633069613,"env":{"POWERSESSION_RECORDING":"1","TERM":"UnKnown","SHELL":"powershell.exe"}}

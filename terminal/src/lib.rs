@@ -4,7 +4,7 @@ extern crate core;
 mod impl_win;
 
 #[cfg(windows)]
-use impl_win::terminal::WindowsTerminal;
+pub use impl_win::terminal::WindowsTerminal;
 use std::error::Error;
 
 use std::sync::mpsc::{Receiver, Sender};

@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -20,8 +21,9 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo,
-    SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD, ENABLE_ECHO_INPUT,
-    ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON,
+    GetStdHandle, SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD,
+    ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_VIRTUAL_TERMINAL_INPUT,
+    ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON, STD_INPUT_HANDLE,
 };
 use windows::Win32::System::Pipes::CreatePipe;
 use windows::Win32::System::Threading::{
@@ -78,45 +80,14 @@ impl WindowsTerminal {
         }
 
         let mut console_size = COORD::default();
-        let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
         unsafe {
-            let h_console = CreateFileW(
-                "CONOUT$",
-                FILE_GENERIC_READ | FILE_GENERIC_WRITE,
-                FILE_SHARE_READ | FILE_SHARE_WRITE,
-                std::ptr::null_mut(),
-                OPEN_EXISTING,
-                FILE_ATTRIBUTE_NORMAL,
-                HANDLE::default(),
-            )
-            .unwrap();
-
-            if h_console == INVALID_HANDLE_VALUE {
-                return Err(Error::from_win32());
+            if let Ok((x, y)) = WindowsTerminal::get_console_size() {
+                console_size.X = x;
+                console_size.Y = y;
             }
 
-            if GetConsoleScreenBufferInfo(h_console, &mut csbi).as_bool() {
-                console_size.X = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-                console_size.Y = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
-            } else {
-                console_size.X = 140;
-                console_size.Y = 80;
-            }
-
-            let mut console_mode = CONSOLE_MODE::default();
-
-            let not_raw_mode_mask = ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT;
-            if !GetConsoleMode(h_console, &mut console_mode).as_bool() {
-                return Err(Error::from_win32());
-            }
-            if !SetConsoleMode(
-                h_console,
-                console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING & !not_raw_mode_mask,
-            )
-            .as_bool()
-            {
-                return Err(Error::from_win32());
-            }
+            // TODO: fix panic here.
+            // WindowsTerminal::set_raw_mode()?;
 
             *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)?;
 
@@ -142,6 +113,51 @@ impl WindowsTerminal {
             .ok()?;
         }
         Ok(rv)
+    }
+
+    unsafe fn set_raw_mode() -> Result<()> {
+        let mut console_mode = CONSOLE_MODE::default();
+
+        let handle = GetStdHandle(STD_INPUT_HANDLE).expect("get stdin handle");
+
+        GetConsoleMode(handle, &mut console_mode).ok()?;
+
+        console_mode &= !ENABLE_ECHO_INPUT;
+        console_mode &= !ENABLE_LINE_INPUT;
+        console_mode &= !ENABLE_PROCESSED_INPUT;
+
+        console_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+        console_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+
+        SetConsoleMode(handle, console_mode).ok()
+    }
+
+    unsafe fn get_console_size() -> Result<(i16, i16)> {
+        let h_console = CreateFileW(
+            "CONOUT$",
+            FILE_GENERIC_READ | FILE_GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            HANDLE::default(),
+        )
+        .unwrap();
+
+        if h_console == INVALID_HANDLE_VALUE {
+            return Err(Error::from_win32());
+        }
+
+        let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
+
+        if GetConsoleScreenBufferInfo(h_console, &mut csbi).as_bool() {
+            Ok((
+                csbi.srWindow.Right - csbi.srWindow.Left + 1,
+                csbi.srWindow.Bottom - csbi.srWindow.Top + 1,
+            ))
+        } else {
+            Ok((140, 80))
+        }
     }
 }
 

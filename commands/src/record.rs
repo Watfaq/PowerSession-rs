@@ -6,6 +6,7 @@ use std::{
     collections::HashMap,
     env,
     fs::File,
+    io,
     io::{Read, Write},
     sync::Arc,
     thread,
@@ -15,6 +16,28 @@ use serde::Serialize;
 
 use terminal::{Terminal, WindowsTerminal};
 
+trait OutputWriter {
+    fn write(&mut self, data: String) -> io::Result<()>;
+}
+
+struct FileOutputWriter {
+    fd: File,
+}
+
+impl FileOutputWriter {
+    fn new(file: String) -> Self {
+        FileOutputWriter {
+            fd: File::create(file).expect("unable to open file"),
+        }
+    }
+}
+
+impl OutputWriter for FileOutputWriter {
+    fn write(&mut self, data: String) -> io::Result<()> {
+        self.fd.write_all(data.as_bytes())
+    }
+}
+
 #[derive(Serialize)]
 struct RecordHeader {
     version: u8,
@@ -22,52 +45,64 @@ struct RecordHeader {
     height: i16,
     timestamp: u64,
     #[serde(rename = "env")]
-    environment: HashMap<&'static str, String>,
+    environment: HashMap<String, String>,
 }
 
 pub struct Record {
-    output_writer: Box<dyn Write + Send + Sync>,
-    env: HashMap<&'static str, String>,
+    output_writer: Box<dyn OutputWriter>,
+    env: HashMap<String, String>,
     command: String,
+    #[cfg(windows)]
     terminal: WindowsTerminal,
+}
+
+#[derive(Debug, Serialize)]
+enum LineItem {
+    String(String),
+    U64(u64),
 }
 
 impl Record {
     pub fn new(
         filename: String,
-        mut env: Option<HashMap<&'static str, String>>,
+        mut env: Option<HashMap<String, String>>,
         command: String,
     ) -> Self {
         Record {
-            output_writer: Box::new(File::create(filename).expect("Can't create file")),
+            output_writer: Box::new(FileOutputWriter::new(filename)),
             env: env.get_or_insert(HashMap::new()).clone(), // this clone() looks wrong??
             command,
             terminal: WindowsTerminal::new(None),
         }
     }
     pub fn execute(&mut self) {
-        self.env.insert("POWERSESSION_RECORDING", "1".to_owned());
-        self.env.insert("SHELL", "powershell.exe".to_owned());
+        self.env
+            .insert("POWERSESSION_RECORDING".to_string(), "1".to_string());
+        self.env
+            .insert("SHELL".to_string(), "powershell.exe".to_string());
         let term: String = env::var("TERMINAL_EMULATOR").unwrap_or("UnKnown".to_string());
-        self.env.insert("TERM", term);
+        self.env.insert("TERM".to_string(), term);
 
         self.record();
     }
 
     fn record(&mut self) {
+        let record_start_time = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("check your machine time")
+            .as_secs();
+
         let header = RecordHeader {
             version: 2,
             width: self.terminal.width,
             height: self.terminal.height,
-            timestamp: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .expect("check your machine time")
-                .as_secs(),
+            timestamp: record_start_time,
             environment: self.env.clone(),
         };
-        let _ = self
-            .output_writer
-            .write(serde_json::to_string(&header).unwrap().as_bytes());
+
+        self.output_writer
+            .write(serde_json::to_string(&header).unwrap())
+            .unwrap();
 
         let (stdin_tx, stdin_rx) = channel::<(Arc<[u8; 1]>, usize)>();
         let (stdout_tx, stdout_rx) = channel::<(Arc<[u8; 1024]>, usize)>();
@@ -93,16 +128,31 @@ impl Record {
 
             let rv = stdout_rx.recv();
             match rv {
-                Ok(b) => {
-                    stdout.write(&b.0[..b.1]).expect("failed to write stdout");
+                Ok((buf, len)) => {
+                    let now = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .expect("check your machine time")
+                        .as_secs();
+                    let ts = now - record_start_time;
+                    let chars = String::from_utf8(buf[..len].to_vec()).unwrap();
+                    let mut data = vec![
+                        LineItem::U64(ts),
+                        LineItem::String("o".to_string()),
+                        LineItem::String(chars),
+                    ];
+                    let line = serde_json::to_string(&data).unwrap();
+                    self.output_writer.write(line).unwrap();
+
+                    stdout.write(&buf[..len]).expect("failed to write stdout");
                     stdout.flush().expect("failed to flush stdout");
                 }
                 Err(err) => {
-                    println!("{}", err.to_string());
+                    // the stdout_rx closed, mostly due to process exited.
                     break;
                 }
             }
         });
+
         self.terminal.attach_stdin(stdin_rx);
         self.terminal.attach_stdout(stdout_tx);
         self.terminal.run(&self.command).unwrap();
