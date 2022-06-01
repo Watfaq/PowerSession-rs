@@ -3,8 +3,8 @@ extern crate clap;
 extern crate commands;
 
 use clap::{App, AppSettings, Arg};
-use commands::Play;
-use commands::Record;
+use commands::{Asciinema, Auth, Play};
+use commands::{Record, Upload};
 
 fn main() {
     let app = App::new("PowerSession")
@@ -64,13 +64,17 @@ fn main() {
             record.execute();
         }
         Some(("auth", _)) => {
-            commands::test();
+            let api_service = Asciinema::new();
+            let auth = Auth::new(Box::new(api_service));
+            auth.execute();
         }
         Some(("upload", upload_matches)) => {
-            println!(
-                "Uploading file {}",
-                upload_matches.value_of("file").unwrap()
-            )
+            let api_service = Asciinema::new();
+            let upload = Upload::new(
+                Box::new(api_service),
+                upload_matches.value_of("file").unwrap().to_owned(),
+            );
+            upload.execute();
         }
         _ => unreachable!(),
     }
