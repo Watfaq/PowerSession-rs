@@ -14,8 +14,8 @@ pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 pub trait Terminal {
     fn run(&mut self, command: &str) -> Result<u32>;
-    fn attach_stdin(&self, rx: Receiver<(Arc<[u8; 1]>, usize)>);
-    fn attach_stdout(&self, tx: Sender<(Arc<[u8; 1024]>, usize)>);
+    fn attach_stdin(&self, rx: Receiver<(Arc<[u8]>, usize)>);
+    fn attach_stdout(&self, tx: Sender<(Arc<[u8]>, usize)>);
 }
 
 #[cfg(test)]
@@ -29,8 +29,8 @@ mod tests {
     #[test]
     fn test_terminal_stdin_stdout() {
         let mut t = WindowsTerminal::new(None);
-        let (stdin_tx, stdin_rx) = channel::<(Arc<[u8; 1]>, usize)>();
-        let (stdout_tx, stdout_rx) = channel::<(Arc<[u8; 1024]>, usize)>();
+        let (stdin_tx, stdin_rx) = channel::<(Arc<[u8]>, usize)>();
+        let (stdout_tx, stdout_rx) = channel::<(Arc<[u8]>, usize)>();
 
         t.attach_stdin(stdin_rx);
         t.attach_stdout(stdout_tx);
@@ -45,7 +45,11 @@ mod tests {
         let cmd = format!("echo {}\r\nexit\r\n", target_text);
 
         for i in 0..cmd.as_bytes().len() {
-            stdin_tx.send((Arc::from([cmd.as_bytes()[i]]), 1)).unwrap();
+            let mut buf = Vec::new();
+            buf.resize(10, 0);
+            buf[0] = cmd.as_bytes()[i];
+
+            stdin_tx.send((Arc::from(buf), 1)).unwrap();
         }
 
         let mut result = vec![];

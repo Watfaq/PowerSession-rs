@@ -3,6 +3,7 @@ extern crate clap;
 extern crate commands;
 
 use clap::{App, AppSettings, Arg};
+use commands::Play;
 use commands::Record;
 
 fn main() {
@@ -26,6 +27,13 @@ fn main() {
                         .short('c')
                         .long("command")
                         .default_value("powershell.exe"),
+                )
+                .arg(
+                    Arg::new("force")
+                        .about("Overwrite if session already exists")
+                        .takes_value(false)
+                        .short('f')
+                        .long("force"),
                 ),
         )
         .subcommand(
@@ -43,13 +51,15 @@ fn main() {
 
     match m.subcommand() {
         Some(("play", play_matches)) => {
-            println!("Playing {}", play_matches.value_of("file").unwrap())
+            let mut play = Play::new(play_matches.value_of("file").unwrap().to_owned());
+            play.execute();
         }
         Some(("rec", rec_matches)) => {
             let mut record = Record::new(
                 rec_matches.value_of("file").unwrap().to_owned(),
                 None,
                 rec_matches.value_of("command").unwrap().to_owned(),
+                rec_matches.is_present("force"),
             );
             record.execute();
         }

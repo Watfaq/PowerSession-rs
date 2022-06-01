@@ -2,13 +2,14 @@ extern crate terminal;
 
 use std::borrow::Borrow;
 use std::path::Path;
+use std::process::exit;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::sync::Mutex;
 use std::time::SystemTime;
 use std::{
     collections::HashMap,
-    env,
+    env, fs,
     fs::File,
     io,
     io::{Read, Write},
@@ -35,9 +36,17 @@ impl Record {
         filename: String,
         mut env: Option<HashMap<String, String>>,
         command: String,
+        overwrite: bool,
     ) -> Self {
         if Path::new(&filename).exists() {
-            panic!("file `{}` exists", filename);
+            println!("session with name `{}` exists", filename);
+            if overwrite {
+                println!("overwrite flag provided. deleting the existing session");
+                fs::remove_file(&filename).unwrap();
+            } else {
+                println!("use -f to overwrite");
+                exit(1);
+            }
         }
 
         Record {
@@ -80,21 +89,20 @@ impl Record {
             .write((serde_json::to_string(&header).unwrap() + "\n").as_bytes())
             .unwrap();
 
-        let (stdin_tx, stdin_rx) = channel::<(Arc<[u8; 1]>, usize)>();
-        let (stdout_tx, stdout_rx) = channel::<(Arc<[u8; 1024]>, usize)>();
+        let (stdin_tx, stdin_rx) = channel::<(Arc<[u8]>, usize)>();
+        let (stdout_tx, stdout_rx) = channel::<(Arc<[u8]>, usize)>();
 
         thread::spawn(move || loop {
             let stdin = std::io::stdin();
             let mut handle = stdin.lock();
-            let mut buf = [0; 1];
+            let mut buf = [0; 10];
             let rv = handle.read(&mut buf);
             match rv {
                 Ok(n) if n > 0 => {
                     stdin_tx.send((Arc::from(buf), n)).unwrap();
                 }
                 _ => {
-                    println!("pty stdin closed");
-                    break;
+                    panic!("pty stdin closed");
                 }
             }
         });
@@ -130,7 +138,7 @@ impl Record {
                     stdout.write(&buf[..len]).expect("failed to write stdout");
                     stdout.flush().expect("failed to flush stdout");
                 }
-                Err(err) => {
+                Err(_) => {
                     // the stdout_rx closed, mostly due to process exited.
                     println!("Record finished. Result saved to file {}", filename);
                     break;
@@ -141,5 +149,26 @@ impl Record {
         self.terminal.attach_stdin(stdin_rx);
         self.terminal.attach_stdout(stdout_tx);
         self.terminal.run(&self.command).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Record;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_record() {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("testdata/play.txt");
+
+        let mut r = Record::new(
+            d.to_str().unwrap().to_owned(),
+            None,
+            "powershell.exe".to_owned(),
+            true,
+        );
+
+        r.execute();
     }
 }

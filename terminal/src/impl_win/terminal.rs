@@ -22,8 +22,9 @@ use windows::Win32::Storage::FileSystem::{
 use windows::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo,
     GetStdHandle, SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD,
-    ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_VIRTUAL_TERMINAL_INPUT,
-    ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON, STD_INPUT_HANDLE,
+    ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_PROCESSED_OUTPUT,
+    ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON, STD_INPUT_HANDLE,
+    STD_OUTPUT_HANDLE,
 };
 use windows::Win32::System::Pipes::CreatePipe;
 use windows::Win32::System::Threading::{
@@ -86,7 +87,6 @@ impl WindowsTerminal {
                 console_size.Y = y;
             }
 
-            // TODO: fix panic here.
             WindowsTerminal::set_raw_mode()?;
 
             *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)?;
@@ -116,15 +116,53 @@ impl WindowsTerminal {
     }
 
     unsafe fn set_raw_mode() -> Result<()> {
-        let mut console_mode = CONSOLE_MODE::default();
+        WindowsTerminal::set_raw_mode_on_stdin()?;
+        WindowsTerminal::set_raw_mode_on_stdout()
+    }
 
-        let handle = GetStdHandle(STD_INPUT_HANDLE).expect("get stdin handle");
+    unsafe fn set_raw_mode_on_stdin() -> Result<()> {
+        let mut console_mode = CONSOLE_MODE::default();
+        let handle = CreateFileW(
+            "CONIN$",
+            FILE_GENERIC_READ | FILE_GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            HANDLE::default(),
+        )
+        .unwrap();
 
         GetConsoleMode(handle, &mut console_mode).expect("get console mode");
 
         console_mode &= !ENABLE_ECHO_INPUT;
         console_mode &= !ENABLE_LINE_INPUT;
         console_mode &= !ENABLE_PROCESSED_INPUT;
+
+        console_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+
+        SetConsoleMode(handle, console_mode).expect("set console mode");
+
+        Ok(())
+    }
+
+    unsafe fn set_raw_mode_on_stdout() -> Result<()> {
+        let mut console_mode = CONSOLE_MODE::default();
+        let handle = CreateFileW(
+            "CONOUT$",
+            FILE_GENERIC_READ | FILE_GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            HANDLE::default(),
+        )
+        .unwrap();
+
+        GetConsoleMode(handle, &mut console_mode).expect("get console mode");
+
+        console_mode |= ENABLE_PROCESSED_OUTPUT;
+        console_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 
         SetConsoleMode(handle, console_mode).expect("set console mode");
 
@@ -176,7 +214,7 @@ impl Terminal for WindowsTerminal {
         };
     }
 
-    fn attach_stdin(&self, rx: Receiver<(Arc<[u8; 1]>, usize)>) {
+    fn attach_stdin(&self, rx: Receiver<(Arc<[u8]>, usize)>) {
         if self.stdin.is_invalid() {
             panic!("input handle invalid");
         }
@@ -192,7 +230,7 @@ impl Terminal for WindowsTerminal {
             }
         });
     }
-    fn attach_stdout(&self, tx: Sender<(Arc<[u8; 1024]>, usize)>) {
+    fn attach_stdout(&self, tx: Sender<(Arc<[u8]>, usize)>) {
         if self.stdout.is_invalid() {
             panic!("stdout handle invalid");
         }

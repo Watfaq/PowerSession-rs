@@ -11,6 +11,13 @@ pub(crate) struct RecordHeader {
     pub(crate) environment: HashMap<String, String>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub(crate) struct SessionLine {
+    pub(crate) timestamp: f64,
+    pub(crate) stdout: bool,
+    pub(crate) content: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub(crate) enum LineItem {
