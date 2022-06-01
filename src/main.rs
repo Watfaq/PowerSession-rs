@@ -10,11 +10,11 @@ use commands::{Record, Upload};
 fn main() {
     let app = Command::new("PowerSession")
         .setting(AppSettings::DeriveDisplayOrder)
+        .subcommand_required(true)
+        .arg_required_else_help(true)
         .subcommand(
             Command::new("rec")
                 .about("Record and save a session")
-                .subcommand_required(true)
-                .arg_required_else_help(true)
                 .arg(
                     Arg::new("file")
                         .help("The filename to save the record")
@@ -39,17 +39,10 @@ fn main() {
         )
         .subcommand(
             Command::new("play")
-                .subcommand_required(true)
-                .arg_required_else_help(true)
-                .override_help("Play a recorded session")
+                .about("Play a recorded session")
                 .arg(Arg::new("file").help("The record session").index(1)),
         )
-        .subcommand(
-            Command::new("auth")
-                .about("Authentication with asciinema.org")
-                .subcommand_required(true)
-                .arg_required_else_help(true),
-        )
+        .subcommand(Command::new("auth").about("Authentication with asciinema.org"))
         .subcommand(
             Command::new("upload")
                 .subcommand_required(true)
@@ -57,6 +50,7 @@ fn main() {
                 .about("Upload a session to ascinema.org")
                 .arg(Arg::new("file").help("The file to be uploaded").index(1)),
         );
+
     let m = app.get_matches();
 
     match m.subcommand() {
