@@ -1,17 +1,13 @@
 use crate::types::{LineItem, RecordHeader, SessionLine};
-use std::cmp::Ordering;
-use std::convert::Infallible;
+
+
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, Write};
-use std::iter::{
-    Chain, Cloned, Copied, Cycle, Enumerate, Filter, FilterMap, FlatMap, Flatten, FromIterator,
-    Fuse, Inspect, Map, Peekable, Product, Rev, Scan, Skip, SkipWhile, StepBy, Sum, Take,
-    TakeWhile, Zip,
-};
+
 use std::path::Path;
 use std::process::exit;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 struct Session {

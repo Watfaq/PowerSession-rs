@@ -1,12 +1,12 @@
 use crate::api::ApiService;
 
 use platform_dirs::AppDirs;
-use reqwest::{header, StatusCode};
+use reqwest::{header};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use std::time::Duration;
+
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]

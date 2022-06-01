@@ -1,9 +1,9 @@
 extern crate terminal;
 
-use std::borrow::Borrow;
+
 use std::path::Path;
 use std::process::exit;
-use std::rc::Rc;
+
 use std::sync::mpsc::channel;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -11,7 +11,6 @@ use std::{
     collections::HashMap,
     env, fs,
     fs::File,
-    io,
     io::{Read, Write},
     sync::Arc,
     thread,

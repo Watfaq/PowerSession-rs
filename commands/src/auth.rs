@@ -1,11 +1,11 @@
 use crate::api::ApiService;
 
 pub struct Auth {
-    api_service: Box<ApiService>,
+    api_service: Box<dyn ApiService>,
 }
 
 impl Auth {
-    pub fn new(api_service: Box<ApiService>) -> Self {
+    pub fn new(api_service: Box<dyn ApiService>) -> Self {
         Auth { api_service }
     }
 

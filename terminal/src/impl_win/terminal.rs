@@ -1,9 +1,9 @@
-use std::convert::TryInto;
-use std::fs::File;
-use std::io::Read;
-use std::io::Write;
+
+
+
+
 use std::option::Option;
-use std::os::windows::io::FromRawHandle;
+
 use std::ptr::null_mut;
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -20,11 +20,9 @@ use windows::Win32::Storage::FileSystem::{
     FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Console::{
-    ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo,
-    GetStdHandle, SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD,
+    ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo, SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD,
     ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_PROCESSED_OUTPUT,
-    ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON, STD_INPUT_HANDLE,
-    STD_OUTPUT_HANDLE,
+    ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON,
 };
 use windows::Win32::System::Pipes::CreatePipe;
 use windows::Win32::System::Threading::{
