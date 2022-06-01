@@ -45,5 +45,8 @@ SUBCOMMANDS:
     help      Print this message or the help of the given subcommand(s)
 ```
 
+## Credits
+- [windows-rs](https://github.com/microsoft/windows-rs)
+
 ## Supporters
 - [GitBook](https://www.gitbook.com/) Community License
