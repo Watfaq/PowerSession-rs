@@ -3,12 +3,12 @@ use std::path::Path;
 use std::process::exit;
 
 pub struct Upload {
-    api_service: Box<ApiService>,
+    api_service: Box<dyn ApiService>,
     filepath: String,
 }
 
 impl Upload {
-    pub fn new(api_service: Box<ApiService>, filepath: String) -> Self {
+    pub fn new(api_service: Box<dyn ApiService>, filepath: String) -> Self {
         if !Path::new(&filepath).exists() {
             println!("session {} doest not exist", filepath);
             exit(1);

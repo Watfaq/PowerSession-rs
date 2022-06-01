@@ -51,7 +51,7 @@ fn main() {
 
     match m.subcommand() {
         Some(("play", play_matches)) => {
-            let mut play = Play::new(play_matches.value_of("file").unwrap().to_owned());
+            let play = Play::new(play_matches.value_of("file").unwrap().to_owned());
             play.execute();
         }
         Some(("rec", rec_matches)) => {

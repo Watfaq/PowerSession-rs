@@ -107,7 +107,7 @@ impl Record {
             }
         });
 
-        let mut output_writer = self.output_writer.clone();
+        let output_writer = self.output_writer.clone();
         let filename = self.filename.clone();
 
         thread::spawn(move || loop {
@@ -123,7 +123,7 @@ impl Record {
                     let ts =
                         now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9 - record_start_time;
                     let chars = String::from_utf8(buf[..len].to_vec()).unwrap();
-                    let mut data = vec![
+                    let data = vec![
                         LineItem::F64(ts),
                         LineItem::String("o".to_string()),
                         LineItem::String(chars),

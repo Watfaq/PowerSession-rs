@@ -15,6 +15,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 struct Session {
+    #[allow(dead_code)]
     header: RecordHeader,
     line_iter: io::Lines<io::BufReader<File>>,
 }
@@ -67,7 +68,7 @@ impl Iterator for StdoutRelativeTimeIter {
         self.0.next().map(|line| {
             let rv = SessionLine {
                 timestamp: match prev_timestamp {
-                    0.0 => 0.0, // first line, start right away
+                    x if x == 0.0 => 0.0, // first line, start right away
                     _ => line.timestamp - prev_timestamp,
                 },
                 content: line.content,
@@ -119,9 +120,11 @@ impl Play {
             session: Session::new(&filename),
         }
     }
+
     pub fn execute(self) {
         let cond = Condvar::new();
         let g = Mutex::new(false);
+        #[allow(unused_must_use)]
         for stdout in self.session.stdout_relative_time_iter() {
             cond.wait_timeout(g.lock().unwrap(), Duration::from_secs_f64(stdout.timestamp))
                 .unwrap();
