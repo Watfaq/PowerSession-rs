@@ -1,6 +1,4 @@
-
-
-
+use crate::terminal::Terminal;
 
 use std::option::Option;
 
@@ -9,7 +7,6 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use super::process::start_process;
 
-use crate::Terminal;
 use std::sync::Arc;
 use windows::core::{Error, Result};
 use windows::Win32::Foundation::{
@@ -20,8 +17,9 @@ use windows::Win32::Storage::FileSystem::{
     FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Console::{
-    ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo, SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD,
-    ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_PROCESSED_OUTPUT,
+    ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo,
+    SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD, ENABLE_ECHO_INPUT,
+    ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_PROCESSED_OUTPUT,
     ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON,
 };
 use windows::Win32::System::Pipes::CreatePipe;
@@ -197,7 +195,7 @@ impl WindowsTerminal {
 }
 
 impl Terminal for WindowsTerminal {
-    fn run(&mut self, command: &str) -> crate::Result<u32> {
+    fn run(&mut self, command: &str) -> crate::terminal::Result<u32> {
         let process = start_process(command, &self.cwd, &mut self.handle);
         unsafe {
             WaitForSingleObject(process.process_info.hProcess, INFINITE);

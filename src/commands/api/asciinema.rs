@@ -1,7 +1,7 @@
-use crate::api::ApiService;
+use super::ApiService;
 
 use platform_dirs::AppDirs;
-use reqwest::{header};
+use reqwest::header;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
@@ -142,7 +142,7 @@ impl ApiService for Asciinema {
 
 #[cfg(test)]
 mod tests {
-    use crate::api::asciinema::Config;
+    use crate::commands::api::asciinema::Config;
     use crate::{Asciinema, Upload};
     use std::path::PathBuf;
     use uuid::{Uuid, Version};
@@ -152,14 +152,5 @@ mod tests {
         let c = Config::new();
         let uuid = Uuid::parse_str(&c.install_id);
         assert_eq!(uuid.unwrap().get_version(), Some(Version::Random)); // uuid4
-    }
-
-    #[test]
-    fn test_upload() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("testdata/play.txt");
-
-        let up = Upload::new(Box::new(Asciinema::new()), d.to_str().unwrap().to_owned());
-        up.execute();
     }
 }

@@ -1,6 +1,7 @@
 #[allow(non_snake_case)]
 extern crate clap;
-extern crate commands;
+mod commands;
+mod terminal;
 
 use clap::{App, AppSettings, Arg};
 use commands::{Asciinema, Auth, Play};

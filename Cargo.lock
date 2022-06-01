@@ -6,8 +6,16 @@ version = 3
 name = "PowerSession"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "clap",
- "commands",
+ "os_info",
+ "platform-dirs",
+ "reqwest",
+ "rustc_version_runtime",
+ "serde",
+ "serde_json",
+ "uuid",
+ "windows",
 ]
 
 [[package]]
@@ -92,21 +100,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "commands"
-version = "0.1.0"
-dependencies = [
- "base64",
- "os_info",
- "platform-dirs",
- "reqwest",
- "rustc_version_runtime",
- "serde",
- "serde_json",
- "terminal",
- "uuid",
 ]
 
 [[package]]
@@ -929,13 +922,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dfed899f0eb03f32ee8c6a0aabdb8a7949659e3466561fc0adf54e26d88c5f4"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "terminal"
-version = "0.1.0"
-dependencies = [
- "windows",
 ]
 
 [[package]]

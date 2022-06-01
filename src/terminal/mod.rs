@@ -20,7 +20,7 @@ pub trait Terminal {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Terminal, WindowsTerminal};
+    use crate::terminal::{Terminal, WindowsTerminal};
     use std::borrow::Borrow;
     use std::sync::mpsc::channel;
     use std::sync::Arc;

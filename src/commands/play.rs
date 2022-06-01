@@ -1,5 +1,4 @@
-use crate::types::{LineItem, RecordHeader, SessionLine};
-
+use crate::commands::types::{LineItem, RecordHeader, SessionLine};
 
 use std::fs::File;
 use std::io;

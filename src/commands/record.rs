@@ -1,6 +1,3 @@
-extern crate terminal;
-
-
 use std::path::Path;
 use std::process::exit;
 
@@ -16,10 +13,9 @@ use std::{
     thread,
 };
 
-use crate::types::LineItem;
-use terminal::{Terminal, WindowsTerminal};
-
-use super::types::RecordHeader;
+use crate::commands::types::LineItem;
+use crate::commands::types::RecordHeader;
+use crate::terminal::{Terminal, WindowsTerminal};
 
 pub struct Record {
     output_writer: Arc<Mutex<Box<dyn Write + Send + Sync>>>,
@@ -148,26 +144,5 @@ impl Record {
         self.terminal.attach_stdin(stdin_rx);
         self.terminal.attach_stdout(stdout_tx);
         self.terminal.run(&self.command).unwrap();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::Record;
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_record() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("testdata/play.txt");
-
-        let mut r = Record::new(
-            d.to_str().unwrap().to_owned(),
-            None,
-            "powershell.exe".to_owned(),
-            true,
-        );
-
-        r.execute();
     }
 }

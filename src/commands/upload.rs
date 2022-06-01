@@ -1,4 +1,4 @@
-use crate::api::ApiService;
+use crate::commands::api::ApiService;
 use std::path::Path;
 use std::process::exit;
 

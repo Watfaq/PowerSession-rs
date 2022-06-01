@@ -1,5 +1,46 @@
-[workspace]
-members = [
-    "bin",
-    "terminal"
-]
+[package]
+name = "PowerSession"
+version = "0.1.0"
+authors = ["Yuwei B <i@xiaoba.me>"]
+edition = "2018"
+
+license = "MIT"
+description = "Record a Session in PowerShell"
+readme = "README.md"
+homepage = "https://github.com/Watfaq/PowerSession"
+repository = "https://github.com/Watfaq/PowerSession"
+keywords = ["cli", "powershell", "asciinema", "conpty", "powersession"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+clap = "3.0.0-beta.2"
+
+platform-dirs = "0.3.0"
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+uuid = { version = "1.1.1", features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+]}
+
+reqwest = { version = "0.11.10", features = ["blocking", "multipart"] }
+
+rustc_version_runtime = "0.2.1"
+os_info = "3"
+base64 = "0.13.0"
+
+#[cfg(windows)]
+windows = {git = "https://github.com/microsoft/windows-rs.git", version = "0.37.0", features=[
+    "alloc",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_System_Console",
+    "Win32_System_WindowsProgramming",
+    "Win32_System_Pipes",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+]}

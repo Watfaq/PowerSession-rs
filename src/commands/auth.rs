@@ -1,4 +1,4 @@
-use crate::api::ApiService;
+use crate::commands::api::ApiService;
 
 pub struct Auth {
     api_service: Box<dyn ApiService>,
