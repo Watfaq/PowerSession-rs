@@ -13,7 +13,7 @@ keywords = ["cli", "powershell", "asciinema", "conpty", "powersession"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-clap = "3.0.0-beta.2"
+clap = "3.1.18"
 
 platform-dirs = "0.3.0"
 

@@ -3,27 +3,27 @@ extern crate clap;
 mod commands;
 mod terminal;
 
-use clap::{App, AppSettings, Arg};
+use clap::{AppSettings, Arg, Command};
 use commands::{Asciinema, Auth, Play};
 use commands::{Record, Upload};
 
 fn main() {
-    let app = App::new("PowerSession")
-        .setting(AppSettings::SubcommandRequiredElseHelp)
+    let app = Command::new("PowerSession")
         .setting(AppSettings::DeriveDisplayOrder)
-        .setting(AppSettings::ColoredHelp)
         .subcommand(
-            App::new("rec")
+            Command::new("rec")
                 .about("Record and save a session")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
                 .arg(
                     Arg::new("file")
-                        .about("The filename to save the record")
+                        .help("The filename to save the record")
                         .index(1)
                         .required(true),
                 )
                 .arg(
                     Arg::new("command")
-                        .about("The command to record, default to be powershell.exe")
+                        .help("The command to record, default to be powershell.exe")
                         .takes_value(true)
                         .short('c')
                         .long("command")
@@ -31,22 +31,31 @@ fn main() {
                 )
                 .arg(
                     Arg::new("force")
-                        .about("Overwrite if session already exists")
+                        .help("Overwrite if session already exists")
                         .takes_value(false)
                         .short('f')
                         .long("force"),
                 ),
         )
         .subcommand(
-            App::new("play")
-                .about("Play a recorded session")
-                .arg(Arg::new("file").about("The record session").index(1)),
+            Command::new("play")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .override_help("Play a recorded session")
+                .arg(Arg::new("file").help("The record session").index(1)),
         )
-        .subcommand(App::new("auth").about("Authentication with asciinema.org"))
         .subcommand(
-            App::new("upload")
+            Command::new("auth")
+                .about("Authentication with asciinema.org")
+                .subcommand_required(true)
+                .arg_required_else_help(true),
+        )
+        .subcommand(
+            Command::new("upload")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
                 .about("Upload a session to ascinema.org")
-                .arg(Arg::new("file").about("The file to be uploaded").index(1)),
+                .arg(Arg::new("file").help("The file to be uploaded").index(1)),
         );
     let m = app.get_matches();
 
