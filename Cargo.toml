@@ -1,6 +1,6 @@
 [package]
 name = "PowerSession"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Yuwei B <i@xiaoba.me>"]
 edition = "2018"
 
@@ -14,6 +14,8 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 clap = "3.1.18"
+log = "0.4"
+fern = { version = "0.6", features = ["colored"] }
 
 platform-dirs = "0.3.0"
 

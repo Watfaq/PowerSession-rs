@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::process::exit;
 
+use log::{error, trace};
 use std::sync::mpsc::channel;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -29,8 +30,8 @@ pub struct Record {
 impl Record {
     pub fn new(
         filename: String,
-        mut env: Option<HashMap<String, String>>,
-        command: String,
+        env: Option<HashMap<String, String>>,
+        command: Option<String>,
         overwrite: bool,
     ) -> Self {
         if Path::new(&filename).exists() {
@@ -47,18 +48,25 @@ impl Record {
         Record {
             output_writer: Arc::new(Mutex::new(Box::new(File::create(&filename).unwrap()))),
             filename,
-            env: env.get_or_insert(HashMap::new()).clone(), // this clone() looks wrong??
-            command,
+            env: env.unwrap_or_default(),
+            command: command
+                .unwrap_or_else(|| env::var("SHELL").unwrap_or("powershell.exe".to_owned())),
             terminal: WindowsTerminal::new(None),
         }
     }
     pub fn execute(&mut self) {
-        self.env
-            .insert("POWERSESSION_RECORDING".to_string(), "1".to_string());
-        self.env
-            .insert("SHELL".to_string(), "powershell.exe".to_string());
-        let term: String = env::var("TERMINAL_EMULATOR").unwrap_or("UnKnown".to_string());
-        self.env.insert("TERM".to_string(), term);
+        self.env.insert(
+            "SHELL".to_string(),
+            env::var("SHELL").unwrap_or("powershell.exe".to_owned()),
+        );
+
+        let term = match env::var("WT_SESSION") {
+            Ok(sess) if sess.len() > 0 => Some("windows-terminal".to_owned()),
+            _ => env::var("TERM").ok(),
+        };
+        if let Some(term) = term {
+            self.env.insert("TERM".to_string(), term);
+        }
 
         self.record();
     }
@@ -111,6 +119,12 @@ impl Record {
             let rv = stdout_rx.recv();
             match rv {
                 Ok((buf, len)) => {
+                    if len == 0 {
+                        trace!("stdout received close indicator");
+                        println!("Record finished. Result saved to file {}", filename);
+                        break;
+                    }
+
                     let now = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .expect("check your machine time");
@@ -133,9 +147,9 @@ impl Record {
                     stdout.write(&buf[..len]).expect("failed to write stdout");
                     stdout.flush().expect("failed to flush stdout");
                 }
-                Err(_) => {
-                    // the stdout_rx closed, mostly due to process exited.
-                    println!("Record finished. Result saved to file {}", filename);
+
+                Err(err) => {
+                    error!("reading stdout: {}", err.to_string());
                     break;
                 }
             }
