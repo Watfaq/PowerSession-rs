@@ -5,7 +5,7 @@ extern crate core;
 mod commands;
 mod terminal;
 
-use clap::{AppSettings, Arg, Command};
+use clap::{crate_version, AppSettings, Arg, Command};
 use commands::{Asciinema, Auth, Play};
 use commands::{Record, Upload};
 use fern::colors::ColoredLevelConfig;
@@ -30,6 +30,7 @@ fn setup_logger(level: log::LevelFilter) -> Result<(), fern::InitError> {
 
 fn main() {
     let app = Command::new("PowerSession")
+        .version(crate_version!())
         .setting(AppSettings::DeriveDisplayOrder)
         .subcommand_required(true)
         .arg_required_else_help(true)
