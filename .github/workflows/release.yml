@@ -8,13 +8,25 @@ name: Publish Rust Release Asset
 
 jobs:
   publish:
-    name: Cargo Publish
+    name: Cargo Publish and GH Release
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v1
       - name: Run Publish
         run: cargo publish --verbose
-      - uses: Swatinem/rust-cache@v1
+        
+      - name: Run Build
+        run: cargo build --release
+        
+      - name: Upload Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            .\target\release\PowerSession.exe
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 env:
   CARGO_TERM_COLOR: always
