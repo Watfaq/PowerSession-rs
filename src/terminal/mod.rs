@@ -38,7 +38,7 @@ mod tests {
         let target_text = "RaNdAmTExT";
 
         let main = thread::spawn(move || {
-            t.run("powershell.exe -nologo")
+            t.run("cmd.exe")
                 .expect("should start process");
         });
 
