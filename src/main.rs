@@ -45,8 +45,6 @@ fn main() {
         .subcommand(Command::new("auth").about("Authentication with asciinema.org"))
         .subcommand(
             Command::new("upload")
-                .subcommand_required(true)
-                .arg_required_else_help(true)
                 .about("Upload a session to ascinema.org")
                 .arg(Arg::new("file").help("The file to be uploaded").index(1)),
         );
