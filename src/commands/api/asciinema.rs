@@ -143,8 +143,8 @@ impl ApiService for Asciinema {
 #[cfg(test)]
 mod tests {
     use crate::commands::api::asciinema::Config;
-    use crate::{Asciinema, Upload};
-    use std::path::PathBuf;
+    
+    
     use uuid::{Uuid, Version};
 
     #[test]

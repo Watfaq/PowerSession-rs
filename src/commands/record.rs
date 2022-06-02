@@ -88,7 +88,7 @@ impl Record {
         let (stdin_tx, stdin_rx) = channel::<(Arc<[u8]>, usize)>();
         let (stdout_tx, stdout_rx) = channel::<(Arc<[u8]>, usize)>();
 
-        let send_stdin = thread::spawn(move || loop {
+        thread::spawn(move || loop {
             let stdin = std::io::stdin();
             let mut handle = stdin.lock();
             let mut buf = [0; 10];
@@ -106,7 +106,7 @@ impl Record {
         let output_writer = self.output_writer.clone();
         let filename = self.filename.clone();
 
-        let read_stdout = thread::spawn(move || loop {
+        thread::spawn(move || loop {
             let mut stdout = std::io::stdout();
 
             let rv = stdout_rx.recv();
