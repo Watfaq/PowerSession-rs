@@ -62,11 +62,10 @@ mod tests {
             result.extend(&output[..n]);
         }
 
+        let output = std::str::from_utf8(result.borrow()).unwrap();
         assert!(
-            std::str::from_utf8(result.borrow())
-                .unwrap()
-                .contains(target_text),
-            "should echo `a`"
+            output.contains(target_text),
+            format!("{} should contains `{}`", output, target_text)
         );
 
         main.join().unwrap();

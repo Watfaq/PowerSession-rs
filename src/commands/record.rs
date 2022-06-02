@@ -61,7 +61,7 @@ impl Record {
         );
 
         let term = match env::var("WT_SESSION") {
-            Ok(sess) if sess.len() > 0 => Some("windows-terminal".to_owned()),
+            Ok(sess) if sess.len() > 0 => Some("ms-terminal".to_owned()),
             _ => env::var("TERM").ok(),
         };
         if let Some(term) = term {

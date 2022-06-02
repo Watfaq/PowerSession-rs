@@ -1,6 +1,7 @@
 use super::ApiService;
 
 use log::trace;
+use os_info::Version;
 use platform_dirs::AppDirs;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
@@ -57,9 +58,15 @@ impl Asciinema {
 
         let runtime_version = rustc_version_runtime::version();
         let os_info = os_info::get();
+        let (os_major, os_minor, os_build) = match os_info.version() {
+            Version::Semantic(major, minor, build) => {
+                (major.to_string(), minor.to_string(), build.to_string())
+            }
+            _ => unreachable!(),
+        };
 
         trace!("rt_info: {}", runtime_version);
-        trace!("os_info: {}", os_info);
+        trace!("os_info: {}.{}.{}", os_major, os_minor, os_build);
 
         let mut headers = header::HeaderMap::new();
         headers.insert(
@@ -76,10 +83,11 @@ impl Asciinema {
 
         let client = reqwest::blocking::Client::builder()
             .user_agent(format!(
-                "asciinema/2.0.0 ({os_edition}; {os_arch}) rust/{runtime_version}",
-                os_edition = os_info.edition().unwrap_or("Windows"),
-                os_arch = os_info.bitness(),
+                "asciinema/2.0.0 rust/{runtime_version} Windows/{os_version_major}-{os_version_major}.{os_version_minor}.{os_version_build}-SP0",
                 runtime_version = runtime_version.to_string(),
+                os_version_major = os_major,
+                os_version_minor = os_minor,
+                os_version_build = os_build,
             ))
             .default_headers(headers)
             .build()

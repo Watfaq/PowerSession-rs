@@ -1,5 +1,7 @@
 #[allow(non_snake_case)]
 extern crate clap;
+extern crate core;
+
 mod commands;
 mod terminal;
 
@@ -56,15 +58,23 @@ fn main() {
                 ),
         )
         .subcommand(
-            Command::new("play")
-                .about("Play a recorded session")
-                .arg(Arg::new("file").help("The record session").index(1)),
+            Command::new("play").about("Play a recorded session").arg(
+                Arg::new("file")
+                    .help("The record session")
+                    .index(1)
+                    .required(true),
+            ),
         )
         .subcommand(Command::new("auth").about("Authentication with asciinema.org"))
         .subcommand(
             Command::new("upload")
                 .about("Upload a session to ascinema.org")
-                .arg(Arg::new("file").help("The file to be uploaded").index(1)),
+                .arg(
+                    Arg::new("file")
+                        .help("The file to be uploaded")
+                        .index(1)
+                        .required(true),
+                ),
         )
         .arg(
             Arg::new("log-level")
