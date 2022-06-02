@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::process::exit;
 
+use log::{error, trace};
 use std::sync::mpsc::channel;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -87,7 +88,7 @@ impl Record {
         let (stdin_tx, stdin_rx) = channel::<(Arc<[u8]>, usize)>();
         let (stdout_tx, stdout_rx) = channel::<(Arc<[u8]>, usize)>();
 
-        thread::spawn(move || loop {
+        let send_stdin = thread::spawn(move || loop {
             let stdin = std::io::stdin();
             let mut handle = stdin.lock();
             let mut buf = [0; 10];
@@ -105,12 +106,18 @@ impl Record {
         let output_writer = self.output_writer.clone();
         let filename = self.filename.clone();
 
-        thread::spawn(move || loop {
+        let read_stdout = thread::spawn(move || loop {
             let mut stdout = std::io::stdout();
 
             let rv = stdout_rx.recv();
             match rv {
                 Ok((buf, len)) => {
+                    if len == 0 {
+                        trace!("stdout received close indicator");
+                        println!("Record finished. Result saved to file {}", filename);
+                        break;
+                    }
+
                     let now = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .expect("check your machine time");
@@ -133,9 +140,9 @@ impl Record {
                     stdout.write(&buf[..len]).expect("failed to write stdout");
                     stdout.flush().expect("failed to flush stdout");
                 }
-                Err(_) => {
-                    // the stdout_rx closed, mostly due to process exited.
-                    println!("Record finished. Result saved to file {}", filename);
+
+                Err(err) => {
+                    error!("reading stdout: {}", err.to_string());
                     break;
                 }
             }

@@ -7,10 +7,11 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use super::process::start_process;
 
+use log::trace;
 use std::sync::Arc;
 use windows::core::{Error, Result};
 use windows::Win32::Foundation::{
-    CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE, INVALID_HANDLE_VALUE,
+    CloseHandle, DuplicateHandle, GetLastError, DUPLICATE_SAME_ACCESS, HANDLE, INVALID_HANDLE_VALUE,
 };
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
@@ -199,12 +200,11 @@ impl Terminal for WindowsTerminal {
         let process = start_process(command, &self.cwd, &mut self.handle);
         unsafe {
             WaitForSingleObject(process.process_info.hProcess, INFINITE);
-            CloseHandle(self.stdin).ok()?;
-            CloseHandle(self.stdout).ok()?;
-
             let mut exit_code: u32 = 0;
 
             GetExitCodeProcess(process.process_info.hProcess, &mut exit_code);
+
+            trace!("process {} exited, exit code: {}", command, exit_code);
 
             return Ok(exit_code);
         };
@@ -240,7 +240,8 @@ impl Terminal for WindowsTerminal {
                 if !ReadFile(stdout, buf.as_mut_ptr() as _, 1024, &mut n_read, null_mut()).as_bool()
                 {
                     // The stdout is closed. send 0 to indicate read end.
-                    tx.send((Arc::from(buf), n_read as _)).unwrap();
+                    trace!("read stdout error: {}", Error::from_win32().message());
+                    tx.send((Arc::from(buf), 0)).unwrap();
                     break;
                 }
             }
@@ -252,14 +253,19 @@ impl Terminal for WindowsTerminal {
 
 impl Drop for WindowsTerminal {
     fn drop(&mut self) {
+        trace!("dropping WindowsTerminal");
+
         unsafe {
             if !self.handle.is_invalid() {
+                trace!("closing PseudoConsole handle");
                 ClosePseudoConsole(self.handle);
             }
-            if self.stdin != INVALID_HANDLE_VALUE {
+            if !self.stdin.is_invalid() {
+                trace!("closing PseudoConsole stdin");
                 CloseHandle(self.stdin);
             }
-            if self.stdout != INVALID_HANDLE_VALUE {
+            if !self.stdout.is_invalid() {
+                trace!("closing PseudoConsole stdout");
                 CloseHandle(self.stdout);
             }
         }
