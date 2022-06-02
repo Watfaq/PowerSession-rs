@@ -1,10 +1,14 @@
 # PowerSession
 
-> Record a Session in PowerShell.
+> **Record a Session in PowerShell.**
+
+[![Crates.io](https://img.shields.io/crates/v/PowerSession?style=flat-square)](https://crates.io/crates/PowerSession)
+[![Crates.io](https://img.shields.io/crates/d/PowerSession?style=flat-square)](https://crates.io/crates/PowerSession)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
+[![Build Status](https://img.shields.io/github/workflow/status/Watfaq/PowerSession/Rust%20CI/main?style=flat-square)](https://github.com/Watfaq/PowerSession/actions/workflows/ci.yml?query=branch%3Amain)
+[![Contributors](https://img.shields.io/github/contributors/Watfaq/PowerSession?style=flat-square)](https://github.com/Watfaq/PowerSession/graphs/contributors)
 
 PowerShell version of [asciinema](https://github.com/asciinema/asciinema) based on [Windows Pseudo Console(ConPTY)](https://devblogs.microsoft.com/commandline/windows-command-line-introducing-the-windows-pseudo-console-conpty/)
-
-Basic features record/play/auth/upload are working now.
 
 *This is a new Rust implemented version.*
 *if you are looking for the C# implementation, please go to [the old version](https://github.com/Watfaq/PowerSession/tree/csharp)*
@@ -12,11 +16,6 @@ Basic features record/play/auth/upload are working now.
 ## Checkout A Demo
 
 [![asciicast](https://asciinema.org/a/272866.svg)](https://asciinema.org/a/272866)
-
-## Compatibilities
-
-* The output is comptible with asciinema v2 standard and can be played by `ascinnema`.
-* The `auth` and `upload` functionalities are against `asciinema.org`.
 
 ## Installation
 
