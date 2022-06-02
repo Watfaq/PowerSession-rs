@@ -1,6 +1,6 @@
 [package]
 name = "PowerSession"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Yuwei B <i@xiaoba.me>"]
 edition = "2018"
 
