@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "PowerSession"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "base64",
  "clap",
@@ -83,6 +83,7 @@ dependencies = [
  "bitflags",
  "clap_lex",
  "indexmap",
+ "lazy_static",
  "strsim",
  "termcolor",
  "textwrap",

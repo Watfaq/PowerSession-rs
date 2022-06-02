@@ -1,9 +1,11 @@
 #[allow(non_snake_case)]
 extern crate clap;
+extern crate core;
+
 mod commands;
 mod terminal;
 
-use clap::{AppSettings, Arg, Command};
+use clap::{crate_version, AppSettings, Arg, Command};
 use commands::{Asciinema, Auth, Play};
 use commands::{Record, Upload};
 use fern::colors::ColoredLevelConfig;
@@ -28,6 +30,7 @@ fn setup_logger(level: log::LevelFilter) -> Result<(), fern::InitError> {
 
 fn main() {
     let app = Command::new("PowerSession")
+        .version(crate_version!())
         .setting(AppSettings::DeriveDisplayOrder)
         .subcommand_required(true)
         .arg_required_else_help(true)
@@ -56,15 +59,23 @@ fn main() {
                 ),
         )
         .subcommand(
-            Command::new("play")
-                .about("Play a recorded session")
-                .arg(Arg::new("file").help("The record session").index(1)),
+            Command::new("play").about("Play a recorded session").arg(
+                Arg::new("file")
+                    .help("The record session")
+                    .index(1)
+                    .required(true),
+            ),
         )
         .subcommand(Command::new("auth").about("Authentication with asciinema.org"))
         .subcommand(
             Command::new("upload")
                 .about("Upload a session to ascinema.org")
-                .arg(Arg::new("file").help("The file to be uploaded").index(1)),
+                .arg(
+                    Arg::new("file")
+                        .help("The file to be uploaded")
+                        .index(1)
+                        .required(true),
+                ),
         )
         .arg(
             Arg::new("log-level")
