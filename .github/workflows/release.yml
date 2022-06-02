@@ -2,7 +2,7 @@ on:
   push:
     # Sequence of patterns matched against refs/tags
     tags:
-    - '^v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+    - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
 
 name: Publish Rust Release Asset
 
@@ -12,7 +12,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Run tests
+      - name: Run Publish
         run: cargo publish --verbose
       - uses: Swatinem/rust-cache@v1
 
