@@ -42,11 +42,10 @@ fn main() {
                 )
                 .arg(
                     Arg::new("command")
-                        .help("The command to record, default to be powershell.exe")
+                        .help("The command to record, defaults to $SHELL")
                         .takes_value(true)
                         .short('c')
-                        .long("command")
-                        .default_value("powershell.exe"),
+                        .long("command"),
                 )
                 .arg(
                     Arg::new("force")
@@ -103,7 +102,7 @@ fn main() {
             let mut record = Record::new(
                 rec_matches.value_of("file").unwrap().to_owned(),
                 None,
-                rec_matches.value_of("command").unwrap().to_owned(),
+                rec_matches.value_of("command").map(Into::into),
                 rec_matches.is_present("force"),
             );
             record.execute();

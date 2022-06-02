@@ -1,5 +1,6 @@
 use super::ApiService;
 
+use log::trace;
 use platform_dirs::AppDirs;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
@@ -57,6 +58,9 @@ impl Asciinema {
         let runtime_version = rustc_version_runtime::version();
         let os_info = os_info::get();
 
+        trace!("rt_info: {}", runtime_version);
+        trace!("os_info: {}", os_info);
+
         let mut headers = header::HeaderMap::new();
         headers.insert(
             header::ACCEPT,
@@ -72,9 +76,10 @@ impl Asciinema {
 
         let client = reqwest::blocking::Client::builder()
             .user_agent(format!(
-                "asciinema/2.0.0 {runtime_version} {os_info}",
+                "asciinema/2.0.0 ({os_edition}; {os_arch}) rust/{runtime_version}",
+                os_edition = os_info.edition().unwrap_or("Windows"),
+                os_arch = os_info.bitness(),
                 runtime_version = runtime_version.to_string(),
-                os_info = os_info.to_string(),
             ))
             .default_headers(headers)
             .build()
@@ -143,8 +148,7 @@ impl ApiService for Asciinema {
 #[cfg(test)]
 mod tests {
     use crate::commands::api::asciinema::Config;
-    
-    
+
     use uuid::{Uuid, Version};
 
     #[test]
