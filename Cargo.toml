@@ -1,14 +1,14 @@
 [package]
 name = "PowerSession"
-version = "0.1.5"
+version = "0.1.6"
 authors = ["Yuwei B <i@xiaoba.me>"]
 edition = "2018"
 
 license = "MIT"
 description = "Record a Session in PowerShell"
 readme = "README.md"
-homepage = "https://github.com/Watfaq/PowerSession"
-repository = "https://github.com/Watfaq/PowerSession"
+homepage = "https://github.com/Watfaq/PowerSession-rs"
+repository = "https://github.com/Watfaq/PowerSession-rs"
 keywords = ["cli", "powershell", "asciinema", "conpty", "powersession"]
 categories = ["command-line-utilities"]
 

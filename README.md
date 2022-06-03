@@ -5,13 +5,13 @@
 [![Crates.io](https://img.shields.io/crates/v/PowerSession?style=flat-square)](https://crates.io/crates/PowerSession)
 [![Crates.io](https://img.shields.io/crates/d/PowerSession?style=flat-square)](https://crates.io/crates/PowerSession)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
-[![Build Status](https://img.shields.io/github/workflow/status/Watfaq/PowerSession/Rust%20CI/main?style=flat-square)](https://github.com/Watfaq/PowerSession/actions/workflows/ci.yml?query=branch%3Amain)
-[![Contributors](https://img.shields.io/github/contributors/Watfaq/PowerSession?style=flat-square)](https://github.com/Watfaq/PowerSession/graphs/contributors)
+[![Build Status](https://img.shields.io/github/workflow/status/Watfaq/PowerSession-rs/Rust%20CI/main?style=flat-square)](https://github.com/Watfaq/PowerSession-rs/actions/workflows/ci.yml?query=branch%3Amain)
+[![Contributors](https://img.shields.io/github/contributors/Watfaq/PowerSession-rs?style=flat-square)](https://github.com/Watfaq/PowerSession-rs/graphs/contributors)
 
 PowerShell version of [asciinema](https://github.com/asciinema/asciinema) based on [Windows Pseudo Console(ConPTY)](https://devblogs.microsoft.com/commandline/windows-command-line-introducing-the-windows-pseudo-console-conpty/)
 
 *This is a new Rust implemented version.*
-*if you are looking for the C# implementation, please go to [the old version](https://github.com/Watfaq/PowerSession/tree/csharp)*
+*if you are looking for the C# implementation, please go to the [C# version](https://github.com/Watfaq/PowerSession)*
 
 ## Checkout A Demo
 
