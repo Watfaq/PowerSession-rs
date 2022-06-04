@@ -19,8 +19,16 @@ PowerShell version of [asciinema](https://github.com/asciinema/asciinema) based 
 
 ## Installation
 
+### Cargo
+
 ```console
 cargo install PowerSession
+```
+
+### Scoop
+
+```console
+scoop install powersession-rs
 ```
 
 ## Usage
