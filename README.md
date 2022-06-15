@@ -15,7 +15,7 @@ PowerShell version of [asciinema](https://github.com/asciinema/asciinema) based 
 
 ## Checkout A Demo
 
-[![asciicast](https://asciinema.org/a/272866.svg)](https://asciinema.org/a/272866)
+[![asciicast](https://asciinema.org/a/499120.svg)](https://asciinema.org/a/499120)
 
 ## Installation
 
