@@ -5,11 +5,11 @@ authors = ["Yuwei B <i@xiaoba.me>"]
 edition = "2018"
 
 license = "MIT"
-description = "Record a Session in PowerShell"
+description = "Asciinema-compatible terminal session recorder for Windows"
 readme = "README.md"
 homepage = "https://github.com/Watfaq/PowerSession-rs"
 repository = "https://github.com/Watfaq/PowerSession-rs"
-keywords = ["cli", "powershell", "asciinema", "conpty", "powersession"]
+keywords = ["cli", "powershell", "asciinema", "terminal", "recorder", "conpty", "powersession"]
 categories = ["command-line-utilities"]
 
 [dependencies]
