@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::exit;
 
-use log::{debug, error, info, trace, warn};
+use log::{error, trace};
 use std::sync::mpsc::channel;
 use std::sync::Mutex;
 use std::time::SystemTime;

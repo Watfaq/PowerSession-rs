@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io;
 use std::io::{BufRead, Write};
 
-use log::info;
+
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Condvar, Mutex};
