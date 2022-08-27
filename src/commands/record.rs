@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::exit;
 
-use log::{error, trace};
+use log::{debug, error, info, trace, warn};
 use std::sync::mpsc::channel;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -112,6 +112,7 @@ impl Record {
 
         let output_writer = self.output_writer.clone();
         let filename = self.filename.clone();
+        let mut left: Vec<u8> = vec![];
 
         thread::spawn(move || loop {
             let mut stdout = std::io::stdout();
@@ -125,6 +126,19 @@ impl Record {
                         break;
                     }
 
+                    let buf_with_left = &[&left, &buf[..len]].concat();
+                    let to_write = match std::str::from_utf8(&buf_with_left) {
+                        Ok(_) => buf_with_left,
+                        Err(err) => {
+                            let bad_bytes = buf_with_left.len() - err.valid_up_to();
+                            left.resize(bad_bytes, 0);
+                            left.clone_from_slice(
+                                &buf_with_left[buf_with_left.len() - bad_bytes..],
+                            );
+                            &buf_with_left[..err.valid_up_to()]
+                        }
+                    };
+
                     let now = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .expect("check your machine time");
@@ -132,7 +146,7 @@ impl Record {
                     let ts =
                         now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9 - record_start_time;
                     // https://github.com/asciinema/asciinema/blob/5a385765f050e04523c9d74fbf98d5afaa2deff0/asciinema/asciicast/v2.py#L119
-                    let chars = String::from_utf8_lossy(&buf[..len]).to_string();
+                    let chars = String::from_utf8_lossy(&to_write).to_string();
                     let data = vec![
                         LineItem::F64(ts),
                         LineItem::String("o".to_string()),
@@ -145,7 +159,7 @@ impl Record {
                         .write(line.as_bytes())
                         .unwrap();
 
-                    stdout.write(&buf[..len]).expect("failed to write stdout");
+                    stdout.write(&to_write).expect("failed to write stdout");
                     stdout.flush().expect("failed to flush stdout");
                 }
 

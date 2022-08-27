@@ -19,9 +19,10 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo,
-    SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD, ENABLE_ECHO_INPUT,
-    ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_PROCESSED_OUTPUT,
-    ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON,
+    SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD, DISABLE_NEWLINE_AUTO_RETURN,
+    ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_LVB_GRID_WORLDWIDE, ENABLE_PROCESSED_INPUT,
+    ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    ENABLE_WRAP_AT_EOL_OUTPUT, HPCON,
 };
 use windows::Win32::System::Pipes::CreatePipe;
 use windows::Win32::System::Threading::{
@@ -160,6 +161,8 @@ impl WindowsTerminal {
 
         console_mode |= ENABLE_PROCESSED_OUTPUT;
         console_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        //console_mode |= DISABLE_NEWLINE_AUTO_RETURN;
+        //console_mode &= !ENABLE_WRAP_AT_EOL_OUTPUT;
 
         SetConsoleMode(handle, console_mode).expect("set console mode");
 
