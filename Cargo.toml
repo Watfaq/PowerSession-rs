@@ -1,8 +1,8 @@
 [package]
 name = "PowerSession"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Yuwei B <i@xiaoba.me>"]
-edition = "2018"
+edition = "2021"
 
 license = "MIT"
 description = "Asciinema-compatible terminal session recorder for Windows"
