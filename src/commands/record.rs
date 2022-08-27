@@ -131,7 +131,8 @@ impl Record {
 
                     let ts =
                         now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9 - record_start_time;
-                    let chars = String::from_utf8(buf[..len].to_vec()).unwrap();
+                    // https://github.com/asciinema/asciinema/blob/5a385765f050e04523c9d74fbf98d5afaa2deff0/asciinema/asciicast/v2.py#L119
+                    let chars = String::from_utf8_lossy(&buf[..len]).to_string();
                     let data = vec![
                         LineItem::F64(ts),
                         LineItem::String("o".to_string()),
