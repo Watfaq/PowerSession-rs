@@ -9,7 +9,7 @@ description = "Asciinema-compatible terminal session recorder for Windows"
 readme = "README.md"
 homepage = "https://github.com/Watfaq/PowerSession-rs"
 repository = "https://github.com/Watfaq/PowerSession-rs"
-keywords = ["cli", "powershell", "asciinema", "terminal", "recorder", "conpty", "powersession"]
+keywords = ["cli", "asciinema", "terminal", "recorder", "conpty"]
 categories = ["command-line-utilities"]
 
 [dependencies]
