@@ -25,6 +25,12 @@ A port of [asciinema](https://github.com/asciinema/asciinema) for Windows, based
 cargo install PowerSession
 ```
 
+### Winget
+
+```console
+winget install Watfaq.PowerSession
+```
+
 ### Scoop
 
 ```console
