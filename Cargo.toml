@@ -13,7 +13,7 @@ keywords = ["cli", "asciinema", "terminal", "recorder", "conpty"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-clap = { version = "3.2.17", features = ["cargo"] }
+clap = { version = "3.2.21", features = ["cargo"] }
 log = "0.4"
 fern = { version = "0.6", features = ["colored"] }
 
