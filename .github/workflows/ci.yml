@@ -54,8 +54,7 @@ jobs:
         with:
           files: .\target\release\PowerSession.exe
       - name: Publish to WinGet
-        uses: vedantmgoyal2009/winget-releaser@latest
+        uses: vedantmgoyal2009/winget-releaser@v1
         with:
           identifier: Watfaq.PowerSession
-          release-tag: ${{ github.ref }}
           token: ${{ secrets.WINGET_TOKEN }}
