@@ -52,8 +52,7 @@ impl Config {
 
         let mut install_id = Uuid::new_v4().to_string();
 
-        let file_exist = config_file.exists();
-        if file_exist == false {
+        if !config_file.exists() {
             fs::create_dir_all(&config_root).unwrap();
             File::create(config_file.to_owned()).unwrap();
         }
