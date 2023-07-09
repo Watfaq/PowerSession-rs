@@ -66,7 +66,9 @@ fn main() {
                     .required(true),
             ),
         )
-        .subcommand(Command::new("auth").about("Authentication with api server (default is asciinema.org)"))
+        .subcommand(
+            Command::new("auth").about("Authentication with api server (default is asciinema.org)"),
+        )
         .subcommand(
             Command::new("upload")
                 .about("Upload a session to api server")
@@ -141,13 +143,12 @@ fn main() {
             );
             upload.execute();
         }
-        Some(("server", new_server)) =>
-        {
+        Some(("server", new_server)) => {
             let url = &new_server.value_of("url").unwrap().to_owned();
             let is_url = reqwest::Url::parse(url);
             match is_url {
-            Ok(_) => Asciinema::change_server(url.to_string()),
-            Err(_) => println!("Error: not a correct URL - e.g: https://asciinema.org"),
+                Ok(_) => Asciinema::change_server(url.to_string()),
+                Err(_) => println!("Error: not a correct URL - e.g: https://asciinema.org"),
             }
         }
         _ => unreachable!(),

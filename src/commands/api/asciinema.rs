@@ -5,8 +5,8 @@ use os_info::Version;
 use platform_dirs::AppDirs;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
-use std::fs::{self, OpenOptions};
 use std::fs::File;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -27,8 +27,8 @@ impl Config {
         let app_dirs = AppDirs::new(None, true).unwrap();
         let config_root = app_dirs.config_dir.join("PowerSession");
         let config_file = config_root.join("config.json");
-        
-        return (config_root,config_file)
+
+        return (config_root, config_file);
     }
 
     fn get() -> Self {
@@ -42,10 +42,10 @@ impl Config {
             let text = format!(
                 "New config file created \nDefault instance will be used: https://asciinema.org \nTo set a custom server type: PowerSession.exe --server <hostname>\n"
             );
-    
+
             println!("{}", text);
-            return  Self::new(None);
-        }
+            return Self::new(None);
+        };
     }
     fn new(api_server: Option<String>) -> Self {
         let (config_root, config_file) = Self::get_config_file();
@@ -55,8 +55,7 @@ impl Config {
         if !config_file.exists() {
             fs::create_dir_all(&config_root).unwrap();
             File::create(config_file.to_owned()).unwrap();
-        }
-        else {
+        } else {
             install_id = Self::get().install_id;
         }
         // Initialize with default if no value given
@@ -66,10 +65,14 @@ impl Config {
             api_server,
             location: config_file.to_str().unwrap().to_owned(),
         };
-        let mut f = OpenOptions::new().write(true).truncate(true).open(config_file).expect("Failed to create file.");
-        f.write_all(serde_json::to_string(&c).unwrap().as_bytes()).expect("Failed to write config.");
+        let mut f = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(config_file)
+            .expect("Failed to create file.");
+        f.write_all(serde_json::to_string(&c).unwrap().as_bytes())
+            .expect("Failed to write config.");
         return c;
-        
     }
 
     fn change_api_server(api_server: String) {
@@ -81,7 +84,6 @@ impl Config {
 
         println!("{}", text);
     }
-
 }
 
 pub struct Asciinema {
@@ -190,9 +192,6 @@ impl ApiService for Asciinema {
             None
         }
     }
-
-
-
 }
 
 #[cfg(test)]
