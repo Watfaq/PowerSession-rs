@@ -66,13 +66,25 @@ fn main() {
                     .required(true),
             ),
         )
-        .subcommand(Command::new("auth").about("Authentication with asciinema.org"))
+        .subcommand(
+            Command::new("auth").about("Authentication with api server (default is asciinema.org)"),
+        )
         .subcommand(
             Command::new("upload")
-                .about("Upload a session to ascinema.org")
+                .about("Upload a session to api server")
                 .arg(
                     Arg::new("file")
                         .help("The file to be uploaded")
+                        .index(1)
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            Command::new("server")
+                .about("The url of asciinema server")
+                .arg(
+                    Arg::new("url")
+                        .help("The url of asciinema server. default is https://asciinema.org")
                         .index(1)
                         .required(true),
                 ),
@@ -130,6 +142,14 @@ fn main() {
                 upload_matches.value_of("file").unwrap().to_owned(),
             );
             upload.execute();
+        }
+        Some(("server", new_server)) => {
+            let url = &new_server.value_of("url").unwrap().to_owned();
+            let is_url = reqwest::Url::parse(url);
+            match is_url {
+                Ok(_) => Asciinema::change_server(url.to_string()),
+                Err(_) => println!("Error: not a correct URL - e.g: https://asciinema.org"),
+            }
         }
         _ => unreachable!(),
     }
