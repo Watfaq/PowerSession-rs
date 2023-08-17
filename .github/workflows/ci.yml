@@ -54,7 +54,7 @@ jobs:
         with:
           files: .\target\release\PowerSession.exe
       - name: Publish to WinGet
-        uses: vedantmgoyal2009/winget-releaser@v1
+        uses: vedantmgoyal2009/winget-releaser@v2
         with:
           identifier: Watfaq.PowerSession
           token: ${{ secrets.WINGET_TOKEN }}
