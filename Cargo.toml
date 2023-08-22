@@ -28,7 +28,7 @@ uuid = { version = "1.1.2", features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ]}
 
-reqwest = { version = "0.11.11", features = ["blocking", "multipart"] }
+reqwest = { version = "0.11.19", features = ["blocking", "multipart"] }
 
 rustc_version_runtime = "0.2.1"
 os_info = "3"
