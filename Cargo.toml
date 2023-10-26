@@ -32,7 +32,7 @@ reqwest = { version = "0.11.20", features = ["blocking", "multipart"] }
 
 rustc_version_runtime = "0.2.1"
 os_info = "3"
-base64 = "0.13.0"
+base64 = "0.21.2"
 
 #[cfg(windows)]
 windows = {git = "https://github.com/microsoft/windows-rs.git", version = "0.37.0", features=[
