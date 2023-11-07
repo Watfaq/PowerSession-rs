@@ -1,7 +1,7 @@
 [package]
 name = "PowerSession"
-version = "0.1.9"
-authors = ["Yuwei B <i@xiaoba.me>"]
+version = "0.1.10"
+authors = ["Yuwei B <contact@yba.dev>"]
 edition = "2021"
 
 license = "MIT"
