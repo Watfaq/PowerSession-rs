@@ -46,13 +46,13 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: PowerSession
-          path: ${{github.workspace}}\target\release
+          path: .\target\release
       - name: Display
-        run: ls ${{github.workspace}}\target\release\PowerSession.exe
+        run: ls .\target\release\PowerSession.exe
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v0.1.13
         with:
-          files: ${{github.workspace}}\target\release\PowerSession.exe
+          files: .\target\release\PowerSession.exe
       - name: Publish to WinGet
         uses: vedantmgoyal2009/winget-releaser@v2
         with:
