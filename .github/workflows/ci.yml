@@ -42,13 +42,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - name: Publish to crates.io
-        run: cargo publish --verbose
       - name: Get PowerSession artifact
         uses: actions/download-artifact@v3
         with:
           name: PowerSession
           path: target/release
+      - name: Display
+        run: ls -al ./target/release
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
@@ -58,3 +58,5 @@ jobs:
         with:
           identifier: Watfaq.PowerSession
           token: ${{ secrets.WINGET_TOKEN }}
+      - name: Publish to crates.io
+        run: cargo publish --verbose
