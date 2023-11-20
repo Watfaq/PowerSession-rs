@@ -30,7 +30,7 @@ uuid = { version = "1.4.1", features = [
 
 reqwest = { version = "0.11.20", features = ["blocking", "multipart"] }
 
-rustc_version_runtime = "0.2.1"
+rustc_version_runtime = "0.3.0"
 os_info = "3"
 base64 = "0.13.0"
 
