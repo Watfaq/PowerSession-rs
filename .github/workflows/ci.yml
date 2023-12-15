@@ -27,7 +27,7 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: PowerSession
           path: target/release/PowerSession.exe
