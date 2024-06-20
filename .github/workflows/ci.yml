@@ -50,7 +50,7 @@ jobs:
       - name: Display
         run: ls .\target\release\PowerSession.exe
       - name: Release
-        uses: softprops/action-gh-release@v0.1.13
+        uses: softprops/action-gh-release@v2.0.6
         with:
           files: .\target\release\PowerSession.exe
       - name: Publish to WinGet
