@@ -5,7 +5,7 @@
 [![Crates.io](https://img.shields.io/crates/v/PowerSession?style=flat-square)](https://crates.io/crates/PowerSession)
 [![Crates.io](https://img.shields.io/crates/d/PowerSession?style=flat-square)](https://crates.io/crates/PowerSession)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
-[![Build Status](https://img.shields.io/github/workflow/status/Watfaq/PowerSession-rs/Rust%20CI/main?style=flat-square)](https://github.com/Watfaq/PowerSession-rs/actions/workflows/ci.yml?query=branch%3Amain)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Watfaq/PowerSession-rs/ci.yml?style=flat-square)](https://github.com/Watfaq/PowerSession-rs/actions/workflows/ci.yml?query=branch%3Amain)
 [![Contributors](https://img.shields.io/github/contributors/Watfaq/PowerSession-rs?style=flat-square)](https://github.com/Watfaq/PowerSession-rs/graphs/contributors)
 
 A port of [asciinema](https://github.com/asciinema/asciinema) for Windows, based on [Windows Pseudo Console(ConPTY)](https://devblogs.microsoft.com/commandline/windows-command-line-introducing-the-windows-pseudo-console-conpty/)
