@@ -1,5 +1,7 @@
 use super::ApiService;
 
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use log::trace;
 use os_info::Version;
 use platform_dirs::AppDirs;
@@ -9,7 +11,6 @@ use std::fs::File;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
-
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
@@ -114,7 +115,7 @@ impl Asciinema {
         );
 
         let cred = format!("user:{}", config.install_id);
-        let cred_b64 = base64::encode_config(cred, base64::STANDARD);
+        let cred_b64 = BASE64_STANDARD.encode(&cred);
         let hdr = format!("Basic {}", cred_b64);
         let mut auth_value = header::HeaderValue::from_str(hdr.as_str()).unwrap();
         auth_value.set_sensitive(true);

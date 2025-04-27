@@ -8,14 +8,13 @@ pub use impl_win::terminal::WindowsTerminal;
 use std::error::Error;
 
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::Arc;
 
 pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 pub trait Terminal {
     fn run(&mut self, command: &str) -> Result<u32>;
-    fn attach_stdin(&self, rx: Receiver<(Arc<[u8]>, usize)>);
-    fn attach_stdout(&self, tx: Sender<(Arc<[u8]>, usize)>);
+    fn attach_stdin(&self, rx: Receiver<(Vec<u8>, usize)>);
+    fn attach_stdout(&self, tx: Sender<(Vec<u8>, usize)>);
 }
 
 #[cfg(test)]
@@ -23,15 +22,14 @@ mod tests {
     use crate::terminal::{Terminal, WindowsTerminal};
     use std::borrow::Borrow;
     use std::sync::mpsc::channel;
-    use std::sync::Arc;
     use std::thread;
 
     #[test]
     #[ignore]
     fn test_terminal_stdin_stdout() {
         let mut t = WindowsTerminal::new(None);
-        let (stdin_tx, stdin_rx) = channel::<(Arc<[u8]>, usize)>();
-        let (stdout_tx, stdout_rx) = channel::<(Arc<[u8]>, usize)>();
+        let (stdin_tx, stdin_rx) = channel::<(Vec<u8>, usize)>();
+        let (stdout_tx, stdout_rx) = channel::<(Vec<u8>, usize)>();
 
         t.attach_stdin(stdin_rx);
         t.attach_stdout(stdout_tx);
@@ -49,7 +47,7 @@ mod tests {
             buf.resize(10, 0);
             buf[0] = cmd.as_bytes()[i];
 
-            stdin_tx.send((Arc::from(buf), 1)).unwrap();
+            stdin_tx.send((buf, 1)).unwrap();
         }
 
         let mut result = vec![];
