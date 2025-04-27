@@ -5,7 +5,7 @@ extern crate core;
 mod commands;
 mod terminal;
 
-use clap::{crate_version, AppSettings, Arg, Command};
+use clap::{Arg, Command, crate_version};
 use commands::{Asciinema, Auth, Play};
 use commands::{Record, Upload};
 use fern::colors::ColoredLevelConfig;
@@ -31,7 +31,6 @@ fn setup_logger(level: log::LevelFilter) -> Result<(), fern::InitError> {
 fn main() {
     let app = Command::new("PowerSession")
         .version(crate_version!())
-        .setting(AppSettings::DeriveDisplayOrder)
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
@@ -46,14 +45,14 @@ fn main() {
                 .arg(
                     Arg::new("command")
                         .help("The command to record, defaults to $SHELL")
-                        .takes_value(true)
+                        .num_args(1)
                         .short('c')
                         .long("command"),
                 )
                 .arg(
                     Arg::new("force")
                         .help("Overwrite if session already exists")
-                        .takes_value(false)
+                        .num_args(0)
                         .short('f')
                         .long("force"),
                 ),
@@ -97,13 +96,13 @@ fn main() {
                 .default_value("error")
                 .default_missing_value("trace")
                 .global(true)
-                .takes_value(true),
+                .num_args(1),
         );
 
     let m = app.get_matches();
 
-    match m.value_of("log-level") {
-        Some(log_level) => match log_level {
+    match m.get_one::<String>("log-level") {
+        Some(log_level) => match log_level.as_str() {
             "error" => setup_logger(log::LevelFilter::Error).unwrap(),
             "warn" => setup_logger(log::LevelFilter::Warn).unwrap(),
             "info" => setup_logger(log::LevelFilter::Info).unwrap(),
@@ -118,15 +117,20 @@ fn main() {
 
     match m.subcommand() {
         Some(("play", play_matches)) => {
-            let play = Play::new(play_matches.value_of("file").unwrap().to_owned());
+            let play = Play::new(
+                play_matches
+                    .get_one::<String>("file")
+                    .expect("record file required")
+                    .to_owned(),
+            );
             play.execute();
         }
         Some(("rec", rec_matches)) => {
             let mut record = Record::new(
-                rec_matches.value_of("file").unwrap().to_owned(),
+                rec_matches.get_one::<String>("file").unwrap().to_owned(),
                 None,
-                rec_matches.value_of("command").map(Into::into),
-                rec_matches.is_present("force"),
+                rec_matches.get_one::<String>("command").map(Into::into),
+                rec_matches.contains_id("force"),
             );
             record.execute();
         }
@@ -139,12 +143,12 @@ fn main() {
             let api_service = Asciinema::new();
             let upload = Upload::new(
                 Box::new(api_service),
-                upload_matches.value_of("file").unwrap().to_owned(),
+                upload_matches.get_one::<String>("file").unwrap().to_owned(),
             );
             upload.execute();
         }
         Some(("server", new_server)) => {
-            let url = &new_server.value_of("url").unwrap().to_owned();
+            let url = &new_server.get_one::<String>("url").unwrap().to_owned();
             let is_url = reqwest::Url::parse(url);
             match is_url {
                 Ok(_) => Asciinema::change_server(url.to_string()),

@@ -2,7 +2,7 @@
 name = "PowerSession"
 version = "0.1.11"
 authors = ["Yuwei B <contact@yba.dev>"]
-edition = "2021"
+edition = "2024"
 
 license = "MIT"
 description = "Asciinema-compatible terminal session recorder for Windows"
@@ -13,30 +13,29 @@ keywords = ["cli", "asciinema", "terminal", "recorder", "conpty"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-clap = { version = "3.2.17", features = ["cargo"] }
+clap = { version = "4.5", features = ["cargo"] }
 log = "0.4"
-fern = { version = "0.6", features = ["colored"] }
+fern = { version = "0.7", features = ["colored"] }
 
 platform-dirs = "0.3.0"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-uuid = { version = "1.12.1", features = [
-    "v4",                # Lets you generate random UUIDs
-    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+uuid = { version = "1.16.0", features = [
+    "v4", # Lets you generate random UUIDs
+    "fast-rng", # Use a faster (but still sufficiently random) RNG
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
-]}
+] }
 
-reqwest = { version = "0.12.4", features = ["blocking", "multipart"] }
+reqwest = { version = "0.12", features = ["blocking", "multipart"] }
 
 rustc_version_runtime = "0.3.0"
 os_info = "3"
-base64 = "0.13.0"
+base64 = "0.22"
 
 #[cfg(windows)]
-windows = { version = "0.38.0", features=[
-    "alloc",
+windows = { version = "0.61.1", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_Threading",
@@ -45,4 +44,4 @@ windows = { version = "0.38.0", features=[
     "Win32_System_Pipes",
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
-]}
+] }

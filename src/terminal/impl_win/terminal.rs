@@ -2,37 +2,34 @@ use crate::terminal::Terminal;
 
 use std::option::Option;
 
-use std::ptr::null_mut;
 use std::sync::mpsc::{Receiver, Sender};
 
 use super::process::start_process;
 
 use log::trace;
-use std::sync::Arc;
-use windows::core::{Error, Result};
+use windows::core::{Error, Result, HSTRING, PCWSTR};
 use windows::Win32::Foundation::{
     CloseHandle, DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE, INVALID_HANDLE_VALUE,
 };
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ,
+    FILE_GENERIC_WRITE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Console::{
-    ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo,
-    SetConsoleMode, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD, ENABLE_ECHO_INPUT,
+    ClosePseudoConsole, CreatePseudoConsole, GetConsoleMode, GetConsoleScreenBufferInfo, SetConsoleMode,
+    CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO, COORD, ENABLE_ECHO_INPUT,
     ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_PROCESSED_OUTPUT,
     ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, HPCON,
 };
 use windows::Win32::System::Pipes::CreatePipe;
 use windows::Win32::System::Threading::{
-    GetCurrentProcess, GetExitCodeProcess, WaitForSingleObject,
+    GetCurrentProcess, GetExitCodeProcess, WaitForSingleObject, INFINITE,
 };
-use windows::Win32::System::WindowsProgramming::INFINITE;
 
 pub struct WindowsTerminal {
     handle: HPCON,
-    stdin: HANDLE,
-    stdout: HANDLE,
+    stdin: isize,
+    stdout: isize,
     cwd: String,
 
     pub width: i16,
@@ -46,12 +43,12 @@ impl WindowsTerminal {
         let mut stdout = INVALID_HANDLE_VALUE;
         let (width, height) =
             WindowsTerminal::create_pseudo_console_and_pipes(&mut handle, &mut stdin, &mut stdout)
-                .expect("failed to create pseduo console");
+                .expect("failed to create pseudo console");
 
         WindowsTerminal {
             handle,
-            stdin,
-            stdout,
+            stdin: stdin.0 as isize,
+            stdout: stdout.0 as isize,
             cwd: cwd.unwrap_or_else(|| {
                 std::env::current_dir()
                     .expect("failed to get cwd")
@@ -73,8 +70,8 @@ impl WindowsTerminal {
         let mut h_pipe_pty_out = INVALID_HANDLE_VALUE;
 
         unsafe {
-            CreatePipe(&mut h_pipe_pty_in, stdin, null_mut(), 0).ok()?;
-            CreatePipe(stdout, &mut h_pipe_pty_out, null_mut(), 0).ok()?;
+            CreatePipe(&mut h_pipe_pty_in, stdin, None, 0)?;
+            CreatePipe(stdout, &mut h_pipe_pty_out, None, 0)?;
         }
 
         let mut console_size = COORD::default();
@@ -88,8 +85,8 @@ impl WindowsTerminal {
 
             *handle = CreatePseudoConsole(console_size, h_pipe_pty_in, h_pipe_pty_out, 0)?;
 
-            CloseHandle(h_pipe_pty_in);
-            CloseHandle(h_pipe_pty_out);
+            let _ = CloseHandle(h_pipe_pty_in);
+            let _ = CloseHandle(h_pipe_pty_out);
 
             Ok((console_size.X, console_size.Y))
         }
@@ -106,91 +103,97 @@ impl WindowsTerminal {
                 0,
                 false,
                 DUPLICATE_SAME_ACCESS,
-            )
-            .ok()?;
+            )?;
         }
         Ok(rv)
     }
 
     unsafe fn set_raw_mode() -> Result<()> {
-        WindowsTerminal::set_raw_mode_on_stdin()?;
-        WindowsTerminal::set_raw_mode_on_stdout()
+        unsafe {
+            WindowsTerminal::set_raw_mode_on_stdin()?;
+            WindowsTerminal::set_raw_mode_on_stdout()
+        }
     }
 
     unsafe fn set_raw_mode_on_stdin() -> Result<()> {
-        let mut console_mode = CONSOLE_MODE::default();
-        let handle = CreateFileW(
-            "CONIN$",
-            FILE_GENERIC_READ | FILE_GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            std::ptr::null_mut(),
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            HANDLE::default(),
-        )
-        .unwrap();
+        unsafe {
+            let mut console_mode = CONSOLE_MODE::default();
+            let handle = CreateFileW(
+                PCWSTR(HSTRING::from("CONIN$").as_ptr()),
+                (FILE_GENERIC_READ | FILE_GENERIC_WRITE).0,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                None,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                None,
+            )?;
 
-        GetConsoleMode(handle, &mut console_mode).expect("get console mode");
+            GetConsoleMode(handle, &mut console_mode).expect("get console mode");
 
-        console_mode &= !ENABLE_ECHO_INPUT;
-        console_mode &= !ENABLE_LINE_INPUT;
-        console_mode &= !ENABLE_PROCESSED_INPUT;
+            console_mode &= !ENABLE_ECHO_INPUT;
+            console_mode &= !ENABLE_LINE_INPUT;
+            console_mode &= !ENABLE_PROCESSED_INPUT;
 
-        console_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+            console_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
 
-        SetConsoleMode(handle, console_mode).expect("set console mode");
+            SetConsoleMode(handle, console_mode).expect("set console mode");
 
-        Ok(())
+            Ok(())
+        }
     }
 
     unsafe fn set_raw_mode_on_stdout() -> Result<()> {
-        let mut console_mode = CONSOLE_MODE::default();
-        let handle = CreateFileW(
-            "CONOUT$",
-            FILE_GENERIC_READ | FILE_GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            std::ptr::null_mut(),
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            HANDLE::default(),
-        )
-        .unwrap();
+        unsafe {
+            let mut console_mode = CONSOLE_MODE::default();
+            let handle = CreateFileW(
+                PCWSTR(HSTRING::from("CONOUT$").as_ptr()),
+                (FILE_GENERIC_READ | FILE_GENERIC_WRITE).0,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                None,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                None,
+            )
+            .expect("create console mode");
 
-        GetConsoleMode(handle, &mut console_mode).expect("get console mode");
+            GetConsoleMode(handle, &mut console_mode).expect("get console mode");
 
-        console_mode |= ENABLE_PROCESSED_OUTPUT;
-        console_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            console_mode |= ENABLE_PROCESSED_OUTPUT;
+            console_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 
-        SetConsoleMode(handle, console_mode).expect("set console mode");
+            SetConsoleMode(handle, console_mode).expect("set console mode");
 
-        Ok(())
+            Ok(())
+        }
     }
 
     unsafe fn get_console_size() -> Result<(i16, i16)> {
-        let h_console = CreateFileW(
-            "CONOUT$",
-            FILE_GENERIC_READ | FILE_GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            std::ptr::null_mut(),
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            HANDLE::default(),
-        )
-        .unwrap();
+        unsafe {
+            let h_console = CreateFileW(
+                PCWSTR(HSTRING::from("CONOUT$").as_ptr()),
+                (FILE_GENERIC_READ | FILE_GENERIC_WRITE).0,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                None,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                None,
+            )
+            .expect("create console mode");
 
-        if h_console == INVALID_HANDLE_VALUE {
-            return Err(Error::from_win32());
-        }
+            if h_console == INVALID_HANDLE_VALUE {
+                return Err(Error::from_win32());
+            }
 
-        let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
+            let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
 
-        if GetConsoleScreenBufferInfo(h_console, &mut csbi).as_bool() {
-            Ok((
-                csbi.srWindow.Right - csbi.srWindow.Left + 1,
-                csbi.srWindow.Bottom - csbi.srWindow.Top + 1,
-            ))
-        } else {
-            Ok((140, 80))
+            if GetConsoleScreenBufferInfo(h_console, &mut csbi).is_ok() {
+                Ok((
+                    csbi.srWindow.Right - csbi.srWindow.Left + 1,
+                    csbi.srWindow.Bottom - csbi.srWindow.Top + 1,
+                ))
+            } else {
+                Ok((140, 80))
+            }
         }
     }
 }
@@ -202,51 +205,59 @@ impl Terminal for WindowsTerminal {
             WaitForSingleObject(process.process_info.hProcess, INFINITE);
             let mut exit_code: u32 = 0;
 
-            GetExitCodeProcess(process.process_info.hProcess, &mut exit_code);
+            GetExitCodeProcess(process.process_info.hProcess, &mut exit_code)
+                .expect("get exit code");
 
             trace!("process {} exited, exit code: {}", command, exit_code);
 
-            return Ok(exit_code);
-        };
+            Ok(exit_code)
+        }
     }
 
-    fn attach_stdin(&self, rx: Receiver<(Arc<[u8]>, usize)>) {
-        if self.stdin.is_invalid() {
+    fn attach_stdin(&self, rx: Receiver<(Vec<u8>, usize)>) {
+        let h = HANDLE(self.stdin as _);
+        if h.is_invalid() {
             panic!("input handle invalid");
         }
-        let stdin = WindowsTerminal::clone_handle(self.stdin).unwrap();
+        let stdin = WindowsTerminal::clone_handle(h).unwrap().0 as isize;
 
-        std::thread::spawn(move || loop {
-            let (buf, n) = rx.recv().unwrap();
+        std::thread::spawn(move || {
+            loop {
+                let (buf, n) = rx.recv().unwrap();
 
-            unsafe {
-                if !WriteFile(stdin, buf.as_ptr() as _, n as _, &mut 0, null_mut()).as_bool() {
-                    break;
+                unsafe {
+                    if !WriteFile(HANDLE(stdin as _), Some(&buf[..n]), None, None).is_ok() {
+                        break;
+                    }
                 }
             }
         });
     }
-    fn attach_stdout(&self, tx: Sender<(Arc<[u8]>, usize)>) {
-        if self.stdout.is_invalid() {
+    fn attach_stdout(&self, tx: Sender<(Vec<u8>, usize)>) {
+        let h = HANDLE(self.stdout as _);
+        if h.is_invalid() {
             panic!("stdout handle invalid");
         }
 
-        let stdout = WindowsTerminal::clone_handle(self.stdout).unwrap();
+        let stdout = WindowsTerminal::clone_handle(h).unwrap().0 as isize;
 
-        std::thread::spawn(move || loop {
-            let mut buf = [0; 1024];
-            let mut n_read = 0;
-            unsafe {
-                if !ReadFile(stdout, buf.as_mut_ptr() as _, 1024, &mut n_read, null_mut()).as_bool()
-                {
-                    // The stdout is closed. send 0 to indicate read end.
-                    trace!("read stdout error: {}", Error::from_win32().message());
-                    tx.send((Arc::from(buf), 0)).unwrap();
-                    break;
+        std::thread::spawn(move || {
+            loop {
+                let mut buf = [0; 1024];
+                let mut n_read = 0;
+                unsafe {
+                    if !ReadFile(HANDLE(stdout as _), Some(&mut buf), Some(&mut n_read), None)
+                        .is_ok()
+                    {
+                        // The stdout is closed. send 0 to indicate read end.
+                        trace!("read stdout error: {}", Error::from_win32().message());
+                        tx.send((buf.to_vec(), 0)).unwrap();
+                        break;
+                    }
                 }
-            }
 
-            tx.send((Arc::from(buf), n_read as _)).unwrap();
+                tx.send((buf.to_vec(), n_read as _)).unwrap();
+            }
         });
     }
 }
@@ -260,13 +271,13 @@ impl Drop for WindowsTerminal {
                 trace!("closing PseudoConsole handle");
                 ClosePseudoConsole(self.handle);
             }
-            if !self.stdin.is_invalid() {
+            if !HANDLE(self.stdin as _).is_invalid() {
                 trace!("closing PseudoConsole stdin");
-                CloseHandle(self.stdin);
+                let _ = CloseHandle(HANDLE(self.stdin as _));
             }
-            if !self.stdout.is_invalid() {
+            if !HANDLE(self.stdout as _).is_invalid() {
                 trace!("closing PseudoConsole stdout");
-                CloseHandle(self.stdout);
+                let _ = CloseHandle(HANDLE(self.stdout as _));
             }
         }
     }

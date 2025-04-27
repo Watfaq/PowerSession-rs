@@ -92,20 +92,22 @@ impl Record {
             .write((serde_json::to_string(&header).unwrap() + "\n").as_bytes())
             .unwrap();
 
-        let (stdin_tx, stdin_rx) = channel::<(Arc<[u8]>, usize)>();
-        let (stdout_tx, stdout_rx) = channel::<(Arc<[u8]>, usize)>();
+        let (stdin_tx, stdin_rx) = channel::<(Vec<u8>, usize)>();
+        let (stdout_tx, stdout_rx) = channel::<(Vec<u8>, usize)>();
 
-        thread::spawn(move || loop {
-            let stdin = std::io::stdin();
-            let mut handle = stdin.lock();
-            let mut buf = [0; 10];
-            let rv = handle.read(&mut buf);
-            match rv {
-                Ok(n) if n > 0 => {
-                    stdin_tx.send((Arc::from(buf), n)).unwrap();
-                }
-                _ => {
-                    panic!("pty stdin closed");
+        thread::spawn(move || {
+            loop {
+                let stdin = std::io::stdin();
+                let mut handle = stdin.lock();
+                let mut buf = [0; 10];
+                let rv = handle.read(&mut buf);
+                match rv {
+                    Ok(n) if n > 0 => {
+                        stdin_tx.send((buf.to_vec(), n)).unwrap();
+                    }
+                    _ => {
+                        panic!("pty stdin closed");
+                    }
                 }
             }
         });
@@ -113,45 +115,47 @@ impl Record {
         let output_writer = self.output_writer.clone();
         let filename = self.filename.clone();
 
-        thread::spawn(move || loop {
-            let mut stdout = std::io::stdout();
+        thread::spawn(move || {
+            loop {
+                let mut stdout = std::io::stdout();
 
-            let rv = stdout_rx.recv();
-            match rv {
-                Ok((buf, len)) => {
-                    if len == 0 {
-                        trace!("stdout received close indicator");
-                        println!("Record finished. Result saved to file {}", filename);
-                        break;
+                let rv = stdout_rx.recv();
+                match rv {
+                    Ok((buf, len)) => {
+                        if len == 0 {
+                            trace!("stdout received close indicator");
+                            println!("Record finished. Result saved to file {}", filename);
+                            break;
+                        }
+
+                        let now = SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .expect("check your machine time");
+
+                        let ts = now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9
+                            - record_start_time;
+                        // https://github.com/asciinema/asciinema/blob/5a385765f050e04523c9d74fbf98d5afaa2deff0/asciinema/asciicast/v2.py#L119
+                        let chars = String::from_utf8_lossy(&buf[..len]).to_string();
+                        let data = vec![
+                            LineItem::F64(ts),
+                            LineItem::String("o".to_string()),
+                            LineItem::String(chars),
+                        ];
+                        let line = serde_json::to_string(&data).unwrap() + "\n";
+                        output_writer
+                            .lock()
+                            .unwrap()
+                            .write(line.as_bytes())
+                            .unwrap();
+
+                        stdout.write(&buf[..len]).expect("failed to write stdout");
+                        stdout.flush().expect("failed to flush stdout");
                     }
 
-                    let now = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .expect("check your machine time");
-
-                    let ts =
-                        now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9 - record_start_time;
-                    // https://github.com/asciinema/asciinema/blob/5a385765f050e04523c9d74fbf98d5afaa2deff0/asciinema/asciicast/v2.py#L119
-                    let chars = String::from_utf8_lossy(&buf[..len]).to_string();
-                    let data = vec![
-                        LineItem::F64(ts),
-                        LineItem::String("o".to_string()),
-                        LineItem::String(chars),
-                    ];
-                    let line = serde_json::to_string(&data).unwrap() + "\n";
-                    output_writer
-                        .lock()
-                        .unwrap()
-                        .write(line.as_bytes())
-                        .unwrap();
-
-                    stdout.write(&buf[..len]).expect("failed to write stdout");
-                    stdout.flush().expect("failed to flush stdout");
-                }
-
-                Err(err) => {
-                    error!("reading stdout: {}", err.to_string());
-                    break;
+                    Err(err) => {
+                        error!("reading stdout: {}", err.to_string());
+                        break;
+                    }
                 }
             }
         });
