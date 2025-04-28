@@ -1,0 +1,16 @@
+name: Update WinGet Packages
+
+on: workflow_dispatch
+
+jobs:
+  update:
+    name: Update Package
+    runs-on: ubuntu-latest
+    steps:
+    - name: Update Packages
+      uses: michidk/winget-updater@v1
+      with:
+        komac-token: ${{ secrets.WINGET_TOKEN }}
+        identifier: "Watfaq.PowerSession"
+        repo: "Watfaq/PowerSession-rs"
+        URL: "https://github.com/Watfaq/PowerSession-rs/releases/download/v{VERSION}/PowerSession.exe"
