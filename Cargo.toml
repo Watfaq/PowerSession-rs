@@ -35,7 +35,7 @@ os_info = "3"
 base64 = "0.22"
 
 #[cfg(windows)]
-windows = { version = "0.61.1", features = [
+windows = { version = "0.61.3", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_Threading",
