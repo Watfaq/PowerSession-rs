@@ -27,7 +27,7 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: PowerSession
           path: target/release/PowerSession.exe
@@ -43,14 +43,14 @@ jobs:
       - uses: actions/checkout@v6
       - uses: Swatinem/rust-cache@v2
       - name: Get PowerSession artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: PowerSession
           path: .\target\release
       - name: Display
         run: ls .\target\release\PowerSession.exe
       - name: Release
-        uses: softprops/action-gh-release@v2.4.2
+        uses: softprops/action-gh-release@v2.5.0
         with:
           files: .\target\release\PowerSession.exe
       - name: Publish to crates.io
