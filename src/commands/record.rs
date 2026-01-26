@@ -14,6 +14,12 @@ use std::{
     thread,
 };
 
+#[cfg(windows)]
+use windows::Win32::{
+    Foundation::HANDLE,
+    System::Console::{GetStdHandle, WriteConsoleW, STD_OUTPUT_HANDLE},
+};
+
 use crate::commands::types::LineItem;
 use crate::commands::types::RecordHeader;
 use crate::terminal::{Terminal, WindowsTerminal};
@@ -116,9 +122,16 @@ impl Record {
         let filename = self.filename.clone();
 
         thread::spawn(move || {
-            loop {
-                let mut stdout = std::io::stdout();
+            // Use raw Windows handle to write bytes directly, bypassing Rust's UTF-8 validation
+            // which fails on Windows console mode with non-UTF-8 sequences
+            #[cfg(windows)]
+            let stdout_handle: HANDLE =
+                unsafe { GetStdHandle(STD_OUTPUT_HANDLE).expect("failed to get stdout handle") };
 
+            // Buffer for incomplete UTF-8 sequences split across chunk boundaries
+            let mut pending_bytes: Vec<u8> = Vec::new();
+
+            loop {
                 let rv = stdout_rx.recv();
                 match rv {
                     Ok((buf, len)) => {
@@ -134,22 +147,45 @@ impl Record {
 
                         let ts = now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9
                             - record_start_time;
-                        // https://github.com/asciinema/asciinema/blob/5a385765f050e04523c9d74fbf98d5afaa2deff0/asciinema/asciicast/v2.py#L119
-                        let chars = String::from_utf8_lossy(&buf[..len]).to_string();
-                        let data = vec![
-                            LineItem::F64(ts),
-                            LineItem::String("o".to_string()),
-                            LineItem::String(chars),
-                        ];
-                        let line = serde_json::to_string(&data).unwrap() + "\n";
-                        output_writer
-                            .lock()
-                            .unwrap()
-                            .write(line.as_bytes())
-                            .unwrap();
 
-                        stdout.write(&buf[..len]).expect("failed to write stdout");
-                        stdout.flush().expect("failed to flush stdout");
+                        // Combine pending bytes with new data
+                        pending_bytes.extend_from_slice(&buf[..len]);
+
+                        // Find the last valid UTF-8 boundary
+                        let valid_up_to = match std::str::from_utf8(&pending_bytes) {
+                            Ok(_) => pending_bytes.len(),
+                            Err(e) => e.valid_up_to(),
+                        };
+
+                        // Only process complete UTF-8 sequences
+                        if valid_up_to > 0 {
+                            // Safe: we just validated these bytes are valid UTF-8
+                            let chars = std::str::from_utf8(&pending_bytes[..valid_up_to]).unwrap();
+
+                            // https://github.com/asciinema/asciinema/blob/5a385765f050e04523c9d74fbf98d5afaa2deff0/asciinema/asciicast/v2.py#L119
+                            let data = vec![
+                                LineItem::F64(ts),
+                                LineItem::String("o".to_string()),
+                                LineItem::String(chars.to_string()),
+                            ];
+                            let line = serde_json::to_string(&data).unwrap() + "\n";
+                            output_writer
+                                .lock()
+                                .unwrap()
+                                .write(line.as_bytes())
+                                .unwrap();
+
+                            // Write to console using WriteConsoleW for proper Unicode support
+                            #[cfg(windows)]
+                            unsafe {
+                                let utf16: Vec<u16> = chars.encode_utf16().collect();
+                                WriteConsoleW(stdout_handle, &utf16, None, None)
+                                    .expect("failed to write stdout");
+                            }
+                        }
+
+                        // Keep incomplete bytes for next iteration
+                        pending_bytes.drain(..valid_up_to);
                     }
 
                     Err(err) => {
