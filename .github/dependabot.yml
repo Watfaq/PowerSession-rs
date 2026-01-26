@@ -4,7 +4,16 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      cargo-deps:
+        patterns:
+          - "*"
