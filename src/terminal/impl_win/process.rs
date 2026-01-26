@@ -50,7 +50,7 @@ unsafe fn configure_process_thread(h_pc: &mut HPCON) -> Result<STARTUPINFOEXW> {
         let success = InitializeProcThreadAttributeList(None, 1, None, &mut lp_size);
         // Note: This initial call will return an error by design. This is expected behavior.
         if success.is_ok() || lp_size == 0 {
-            return Err(Error::from_win32());
+            return Err(Error::from_thread());
         }
 
         let lp_attribute_list: Box<[u8]> = vec![0; lp_size].into_boxed_slice();
@@ -68,7 +68,7 @@ unsafe fn configure_process_thread(h_pc: &mut HPCON) -> Result<STARTUPINFOEXW> {
         );
 
         if !success.is_ok() {
-            return Err(Error::from_win32());
+            return Err(Error::from_thread());
         }
 
         let success = UpdateProcThreadAttribute(
@@ -82,7 +82,7 @@ unsafe fn configure_process_thread(h_pc: &mut HPCON) -> Result<STARTUPINFOEXW> {
         );
 
         if !success.is_ok() {
-            return Err(Error::from_win32());
+            return Err(Error::from_thread());
         }
 
         Ok(start_info)
@@ -117,7 +117,7 @@ unsafe fn run_process(
         );
 
         if !success.is_ok() {
-            return Err(Error::from_win32());
+            return Err(Error::from_thread());
         }
 
         Ok(p_info)

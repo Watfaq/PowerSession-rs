@@ -181,7 +181,7 @@ impl WindowsTerminal {
             .expect("create console mode");
 
             if h_console == INVALID_HANDLE_VALUE {
-                return Err(Error::from_win32());
+                return Err(Error::from_thread());
             }
 
             let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
@@ -250,7 +250,7 @@ impl Terminal for WindowsTerminal {
                         .is_ok()
                     {
                         // The stdout is closed. send 0 to indicate read end.
-                        trace!("read stdout error: {}", Error::from_win32().message());
+                        trace!("read stdout error: {}", Error::from_thread().message());
                         tx.send((buf.to_vec(), 0)).unwrap();
                         break;
                     }
