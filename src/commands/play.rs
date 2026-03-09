@@ -107,12 +107,16 @@ impl Session {
 
 pub struct Play {
     session: Session,
+    idle_time_limit: Option<f64>,
+    speed: f64,
 }
 
 impl Play {
-    pub fn new(filename: String) -> Self {
+    pub fn new(filename: String, idle_time_limit: Option<f64>, speed: f64) -> Self {
         Play {
             session: Session::new(&filename),
+            idle_time_limit,
+            speed,
         }
     }
 
@@ -121,7 +125,12 @@ impl Play {
         let g = Mutex::new(false);
         #[allow(unused_must_use)]
         for stdout in self.session.stdout_relative_time_iter() {
-            cond.wait_timeout(g.lock().unwrap(), Duration::from_secs_f64(stdout.timestamp))
+            let mut delay = stdout.timestamp;
+            if let Some(limit) = self.idle_time_limit {
+                delay = delay.min(limit);
+            }
+            delay /= self.speed;
+            cond.wait_timeout(g.lock().unwrap(), Duration::from_secs_f64(delay))
                 .unwrap();
             io::stdout().write_all(stdout.content.as_bytes()).unwrap();
             io::stdout().flush().unwrap();
@@ -134,12 +143,33 @@ mod tests {
     use crate::Play;
     use std::path::PathBuf;
 
-    #[test]
-    fn test_play() {
+    fn test_data_path() -> String {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("testdata/play.txt");
+        d.as_path().to_str().unwrap().to_owned()
+    }
 
-        let play = Play::new(d.as_path().to_str().unwrap().to_owned());
+    #[test]
+    fn test_play() {
+        let play = Play::new(test_data_path(), None, 1.0);
+        play.execute();
+    }
+
+    #[test]
+    fn test_play_with_speed() {
+        let play = Play::new(test_data_path(), None, 2.0);
+        play.execute();
+    }
+
+    #[test]
+    fn test_play_with_idle_time_limit() {
+        let play = Play::new(test_data_path(), Some(0.5), 1.0);
+        play.execute();
+    }
+
+    #[test]
+    fn test_play_with_speed_and_idle_time_limit() {
+        let play = Play::new(test_data_path(), Some(0.5), 2.0);
         play.execute();
     }
 }

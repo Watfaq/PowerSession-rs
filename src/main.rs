@@ -58,12 +58,46 @@ fn main() {
                 ),
         )
         .subcommand(
-            Command::new("play").about("Play a recorded session").arg(
-                Arg::new("file")
-                    .help("The record session")
-                    .index(1)
-                    .required(true),
-            ),
+            Command::new("play")
+                .about("Play a recorded session")
+                .arg(
+                    Arg::new("file")
+                        .help("The record session")
+                        .index(1)
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("idle-time-limit")
+                        .help("Limit idle time during playback to given number of seconds")
+                        .short('i')
+                        .long("idle-time-limit")
+                        .num_args(1)
+                        .value_parser(|s: &str| {
+                            s.parse::<f64>().map_err(|e| e.to_string()).and_then(|v| {
+                                if v >= 0.0 {
+                                    Ok(v)
+                                } else {
+                                    Err("idle-time-limit must be non-negative".to_string())
+                                }
+                            })
+                        }),
+                )
+                .arg(
+                    Arg::new("speed")
+                        .help("Playback speedup (can be fractional)")
+                        .short('s')
+                        .long("speed")
+                        .num_args(1)
+                        .value_parser(|s: &str| {
+                            s.parse::<f64>().map_err(|e| e.to_string()).and_then(|v| {
+                                if v > 0.0 {
+                                    Ok(v)
+                                } else {
+                                    Err("speed must be greater than zero".to_string())
+                                }
+                            })
+                        }),
+                ),
         )
         .subcommand(
             Command::new("auth").about("Authentication with api server (default is asciinema.org)"),
@@ -122,6 +156,8 @@ fn main() {
                     .get_one::<String>("file")
                     .expect("record file required")
                     .to_owned(),
+                play_matches.get_one::<f64>("idle-time-limit").copied(),
+                play_matches.get_one::<f64>("speed").copied().unwrap_or(1.0),
             );
             play.execute();
         }
