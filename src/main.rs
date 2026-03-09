@@ -5,6 +5,7 @@ extern crate core;
 mod commands;
 mod terminal;
 
+use clap::builder::styling::{AnsiColor, Styles};
 use clap::{Arg, Command, crate_version};
 use commands::{Asciinema, Auth, Play};
 use commands::{Record, Upload};
@@ -29,8 +30,15 @@ fn setup_logger(level: log::LevelFilter) -> Result<(), fern::InitError> {
 }
 
 fn main() {
+    let styles = Styles::styled()
+        .header(AnsiColor::Yellow.on_default().bold())
+        .usage(AnsiColor::Yellow.on_default().bold())
+        .literal(AnsiColor::Green.on_default().bold())
+        .placeholder(AnsiColor::Cyan.on_default());
+
     let app = Command::new("PowerSession")
         .version(crate_version!())
+        .styles(styles)
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
