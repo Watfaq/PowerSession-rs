@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "PowerSession"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "base64",
  "clap",
