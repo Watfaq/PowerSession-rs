@@ -9,7 +9,7 @@ use std::{
     collections::HashMap,
     env, fs,
     fs::File,
-    io::{Read, Write},
+    io::Write,
     sync::Arc,
     thread,
 };
@@ -17,7 +17,8 @@ use std::{
 #[cfg(windows)]
 use windows::Win32::{
     Foundation::HANDLE,
-    System::Console::{GetStdHandle, WriteConsoleW, STD_OUTPUT_HANDLE},
+    Storage::FileSystem::ReadFile,
+    System::Console::{GetStdHandle, WriteConsoleW, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE},
 };
 
 use crate::commands::types::LineItem;
@@ -101,20 +102,55 @@ impl Record {
         let (stdin_tx, stdin_rx) = channel::<(Vec<u8>, usize)>();
         let (stdout_tx, stdout_rx) = channel::<(Vec<u8>, usize)>();
 
+        // On Windows, use ReadFile directly on the stdin handle instead of
+        // std::io::stdin() (which uses ReadConsoleW internally). When raw mode is
+        // active (ENABLE_LINE_INPUT and ENABLE_PROCESSED_INPUT both disabled),
+        // ReadConsoleW silently drops ESC (0x1B), stripping the prefix from VT
+        // sequences such as \x1bOP (F1) or \x1b[A (arrow up).  ReadFile reads raw
+        // bytes without any ESC processing, so all key sequences are forwarded
+        // intact.
+        #[cfg(windows)]
+        let stdin_handle: isize = unsafe {
+            GetStdHandle(STD_INPUT_HANDLE)
+                .expect("failed to get Windows stdin handle (STD_INPUT_HANDLE)")
+                .0 as isize
+        };
+
         thread::spawn(move || {
             loop {
-                let stdin = std::io::stdin();
-                let mut handle = stdin.lock();
-                let mut buf = [0; 10];
-                let rv = handle.read(&mut buf);
-                match rv {
-                    Ok(n) if n > 0 => {
-                        stdin_tx.send((buf.to_vec(), n)).unwrap();
+                let mut buf = [0u8; 10];
+
+                #[cfg(windows)]
+                let n = {
+                    let mut n_read: u32 = 0;
+                    let ok = unsafe {
+                        ReadFile(
+                            HANDLE(stdin_handle as _),
+                            Some(&mut buf),
+                            Some(&mut n_read),
+                            None,
+                        )
+                        .is_ok()
+                    };
+                    if !ok {
+                        panic!("ReadFile on stdin failed");
                     }
-                    _ => {
+                    if n_read == 0 {
                         panic!("pty stdin closed");
                     }
-                }
+                    n_read as usize
+                };
+
+                #[cfg(not(windows))]
+                let n = {
+                    use std::io::Read;
+                    match std::io::stdin().lock().read(&mut buf) {
+                        Ok(n) if n > 0 => n,
+                        _ => panic!("pty stdin closed"),
+                    }
+                };
+
+                stdin_tx.send((buf.to_vec(), n)).unwrap();
             }
         });
 
