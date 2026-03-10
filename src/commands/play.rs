@@ -229,11 +229,7 @@ fn parse_reader(reader: Box<dyn BufRead>, source_name: &str) -> Session {
 
 impl Session {
     fn new(source: &str) -> Self {
-        if is_url(source) {
-            Self::from_url(source)
-        } else {
-            Self::from_file(source)
-        }
+        if is_url(source) { Self::from_url(source) } else { Self::from_file(source) }
     }
 
     fn from_file(filename: &str) -> Self {
@@ -418,4 +414,3 @@ mod tests {
         );
     }
 }
-
