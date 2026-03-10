@@ -251,12 +251,12 @@ impl Session {
     fn from_url(url: &str) -> Self {
         let url = normalize_url(url);
         let response = reqwest::blocking::get(&url).unwrap_or_else(|e| {
-            eprintln!("Failed to fetch URL {}: {}", url, e);
+            eprintln!("failed to fetch URL {}: {}", url, e);
             exit(1);
         });
 
         if !response.status().is_success() {
-            eprintln!("Failed to fetch URL {}: HTTP {}", url, response.status());
+            eprintln!("failed to fetch URL {}: HTTP {}", url, response.status());
             exit(1);
         }
 
