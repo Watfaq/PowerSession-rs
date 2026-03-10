@@ -75,12 +75,6 @@ impl Stream {
                     .unwrap_or_else(|e| trace!("failed to set non-blocking websocket: {}", e));
             }
             MaybeTlsStream::Rustls(stream) => {
-                let (_, tcp) = stream.get_mut();
-                tcp.set_nonblocking(true)
-                    .unwrap_or_else(|e| trace!("failed to set non-blocking websocket: {}", e));
-            }
-            #[cfg(feature = "native-tls")]
-            MaybeTlsStream::NativeTls(stream) => {
                 stream
                     .get_mut()
                     .set_nonblocking(true)
@@ -108,7 +102,7 @@ impl Stream {
         thread::spawn(move || loop {
             let msg = {
                 let mut sock = ws_reader.lock().expect("websocket mutex poisoned");
-                sock.read_message()
+                sock.read()
             };
 
             match msg {
