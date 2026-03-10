@@ -256,6 +256,7 @@ impl ApiService for Asciinema {
 
 #[cfg(test)]
 mod tests {
+    use base64::prelude::BASE64_STANDARD;
     use crate::commands::api::asciinema::Config;
 
     use uuid::{Uuid, Version};
@@ -265,5 +266,51 @@ mod tests {
         let c = Config::new(None);
         let uuid = Uuid::parse_str(&c.install_id);
         assert_eq!(uuid.unwrap().get_version(), Some(Version::Random)); // uuid4
+    }
+
+    #[test]
+    fn test_get_stream_ws_url_https_and_http() {
+        let client = reqwest::blocking::Client::new();
+
+        let asc_https = super::Asciinema {
+            config: Config {
+                install_id: "install".to_string(),
+                api_server: "https://demo.asciinema.org/".to_string(),
+                location: String::new(),
+            },
+            http_client: client.clone(),
+        };
+        assert_eq!(
+            asc_https.get_stream_ws_url("abc123"),
+            "wss://demo.asciinema.org/ws/S/abc123"
+        );
+
+        let asc_http = super::Asciinema {
+            config: Config {
+                install_id: "install".to_string(),
+                api_server: "http://asciinema.test".to_string(),
+                location: String::new(),
+            },
+            http_client: client,
+        };
+        assert_eq!(
+            asc_http.get_stream_ws_url("xyz"),
+            "ws://asciinema.test/ws/S/xyz"
+        );
+    }
+
+    #[test]
+    fn test_get_auth_header_format() {
+        let asc = super::Asciinema {
+            config: Config {
+                install_id: "token-123".to_string(),
+                api_server: "https://example".to_string(),
+                location: String::new(),
+            },
+            http_client: reqwest::blocking::Client::new(),
+        };
+
+        let expected = format!("Basic {}", BASE64_STANDARD.encode("user:token-123"));
+        assert_eq!(asc.get_auth_header(), expected);
     }
 }

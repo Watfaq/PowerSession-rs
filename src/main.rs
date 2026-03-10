@@ -238,8 +238,8 @@ fn main() {
                     // Read the current terminal size to inform the server.
                     #[cfg(windows)]
                     let (cols, rows) = {
-                        let t = crate::terminal::WindowsTerminal::new(None);
-                        (t.width as u16, t.height as u16)
+                        crate::terminal::WindowsTerminal::console_size()
+                            .unwrap_or((80u16, 24u16))
                     };
                     #[cfg(not(windows))]
                     let (cols, rows) = (80u16, 24u16);
@@ -256,7 +256,7 @@ fn main() {
                     }
                 };
 
-            let mut stream = Stream::new(ws_url, stream_url, auth_header, None, command);
+            let mut stream = Stream::new(ws_url, stream_url, auth_header, command);
             stream.execute();
         }
         _ => unreachable!(),

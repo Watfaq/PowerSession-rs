@@ -1,12 +1,13 @@
 use std::{
-    collections::HashMap,
     env,
-    sync::mpsc::channel,
+    io::ErrorKind,
+    sync::{mpsc::channel, Arc, Mutex},
     thread,
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use log::{error, trace};
+use tungstenite::stream::MaybeTlsStream;
 use tungstenite::Message;
 
 #[cfg(windows)]
@@ -23,8 +24,6 @@ pub struct Stream {
     ws_url: String,
     stream_url: String,
     auth_header: String,
-    #[allow(dead_code)]
-    env: HashMap<String, String>,
     command: String,
     #[cfg(windows)]
     terminal: WindowsTerminal,
@@ -35,14 +34,12 @@ impl Stream {
         ws_url: String,
         stream_url: String,
         auth_header: String,
-        env: Option<HashMap<String, String>>,
         command: Option<String>,
     ) -> Self {
         Stream {
             ws_url,
             stream_url,
             auth_header,
-            env: env.unwrap_or_default(),
             command: command
                 .unwrap_or_else(|| env::var("SHELL").unwrap_or("powershell.exe".to_owned())),
             terminal: WindowsTerminal::new(None),
@@ -51,7 +48,7 @@ impl Stream {
 
     pub fn execute(&mut self) {
         println!("Streaming. Watch at: {}", self.stream_url);
-        println!("Press Ctrl+D to stop.");
+        println!("Exit the shell/command to stop (Ctrl+Z then Enter on Windows).");
         self.stream();
     }
 
@@ -71,17 +68,74 @@ impl Stream {
 
         let (mut ws, _) =
             tungstenite::connect(request).expect("failed to connect to stream server");
+        match ws.get_mut() {
+            MaybeTlsStream::Plain(stream) => {
+                stream
+                    .set_nonblocking(true)
+                    .unwrap_or_else(|e| trace!("failed to set non-blocking websocket: {}", e));
+            }
+            MaybeTlsStream::Rustls(stream) => {
+                let (_, tcp) = stream.get_mut();
+                tcp.set_nonblocking(true)
+                    .unwrap_or_else(|e| trace!("failed to set non-blocking websocket: {}", e));
+            }
+            #[cfg(feature = "native-tls")]
+            MaybeTlsStream::NativeTls(stream) => {
+                stream
+                    .get_mut()
+                    .set_nonblocking(true)
+                    .unwrap_or_else(|e| trace!("failed to set non-blocking websocket: {}", e));
+            }
+        }
+        let ws = Arc::new(Mutex::new(ws));
 
-        // Send an asciicast-compatible reset event so the server knows the terminal size.
-        let reset_data = format!("{}x{}", self.terminal.width, self.terminal.height);
-        let reset_event = serde_json::to_string(&[
-            LineItem::F64(0.0),
-            LineItem::String("r".to_string()),
-            LineItem::String(reset_data),
-        ])
-        .unwrap();
-        ws.send(Message::Text(reset_event.into()))
-            .expect("failed to send reset event");
+        {
+            // Send an asciicast-compatible reset event so the server knows the terminal size.
+            let reset_data = format!("{}x{}", self.terminal.width, self.terminal.height);
+            let reset_event = serde_json::to_string(&[
+                LineItem::F64(0.0),
+                LineItem::String("r".to_string()),
+                LineItem::String(reset_data),
+            ])
+            .unwrap();
+            let mut sock = ws.lock().expect("websocket mutex poisoned");
+            sock.send(Message::Text(reset_event.into()))
+                .expect("failed to send reset event");
+        }
+
+        // Keep a read loop alive to respond to Ping/Pong/Close frames from the server.
+        let ws_reader = ws.clone();
+        thread::spawn(move || loop {
+            let msg = {
+                let mut sock = ws_reader.lock().expect("websocket mutex poisoned");
+                sock.read_message()
+            };
+
+            match msg {
+                Ok(Message::Ping(payload)) => {
+                    if let Ok(mut sock) = ws_reader.lock() {
+                        let _ = sock.send(Message::Pong(payload));
+                    }
+                }
+                Ok(Message::Close(frame)) => {
+                    trace!("server closed stream: {:?}", frame);
+                    break;
+                }
+                Ok(_) => {}
+                Err(tungstenite::Error::Io(ref e))
+                    if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::TimedOut =>
+                {
+                    thread::sleep(Duration::from_millis(25));
+                }
+                Err(tungstenite::Error::AlreadyClosed | tungstenite::Error::ConnectionClosed) => {
+                    break;
+                }
+                Err(e) => {
+                    error!("websocket read error: {}", e);
+                    break;
+                }
+            }
+        });
 
         let (stdin_tx, stdin_rx) = channel::<(Vec<u8>, usize)>();
         let (stdout_tx, stdout_rx) = channel::<(Vec<u8>, usize)>();
@@ -131,6 +185,7 @@ impl Stream {
         });
 
         // Stdout thread: read pty output, display it locally, and forward it to the WebSocket.
+        let ws_writer = ws.clone();
         thread::spawn(move || {
             #[cfg(windows)]
             let stdout_handle: HANDLE = unsafe {
@@ -146,7 +201,9 @@ impl Stream {
                         if len == 0 {
                             trace!("stdout received close indicator");
                             println!("\nStreaming session ended.");
-                            ws.close(None).ok();
+                            if let Ok(mut sock) = ws_writer.lock() {
+                                let _ = sock.close(None);
+                            }
                             break;
                         }
 
@@ -174,7 +231,12 @@ impl Stream {
                             ];
                             let event = serde_json::to_string(&data).unwrap();
 
-                            if let Err(e) = ws.send(Message::Text(event.into())) {
+                            let send_result = ws_writer
+                                .lock()
+                                .expect("websocket mutex poisoned")
+                                .send(Message::Text(event.into()));
+
+                            if let Err(e) = send_result {
                                 error!("failed to send WebSocket message: {}", e);
                                 break;
                             }
