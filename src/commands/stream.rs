@@ -48,7 +48,7 @@ impl Stream {
 
     pub fn execute(&mut self) {
         println!("Streaming. Watch at: {}", self.stream_url);
-        println!("Exit the shell/command to stop (Ctrl+Z then Enter on Windows).");
+        println!("Exit the shell/command to stop streaming.");
         self.stream();
     }
 

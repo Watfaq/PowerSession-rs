@@ -257,7 +257,9 @@ impl ApiService for Asciinema {
 #[cfg(test)]
 mod tests {
     use base64::prelude::BASE64_STANDARD;
+    use base64::Engine;
     use crate::commands::api::asciinema::Config;
+    use crate::commands::api::ApiService;
 
     use uuid::{Uuid, Version};
 
