@@ -80,6 +80,7 @@ impl Stream {
                     .set_nonblocking(true)
                     .unwrap_or_else(|e| trace!("failed to set non-blocking websocket: {}", e));
             }
+            _ => {}
         }
         let ws = Arc::new(Mutex::new(ws));
 
