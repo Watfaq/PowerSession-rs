@@ -1,0 +1,4 @@
+{"version":1,"width":120,"height":30,"duration":3.0,"command":"powershell.exe","title":"Test v1 recording","env":{"SHELL":"powershell.exe","TERM":"xterm"},"stdout":[[0.5,"Windows PowerShell
+"],[0.5,"Copyright (C) Microsoft Corporation.
+"],[1.0,"PS C:\> "],[0.5,"exit
+"]]}
