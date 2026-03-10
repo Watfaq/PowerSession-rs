@@ -70,7 +70,7 @@ fn main() {
                 .about("Play a recorded session")
                 .arg(
                     Arg::new("file")
-                        .help("The record session")
+                        .help("The record session file path or URL (e.g. https://asciinema.org/a/<id>)")
                         .index(1)
                         .required(true),
                 )

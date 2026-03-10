@@ -12,7 +12,7 @@ use std::time::Duration;
 struct Session {
     #[allow(dead_code)]
     header: RecordHeader,
-    line_iter: io::Lines<io::BufReader<File>>,
+    line_iter: io::Lines<Box<dyn BufRead>>,
 }
 
 struct StdoutIter(Session);
@@ -75,24 +75,71 @@ impl Iterator for StdoutRelativeTimeIter {
     }
 }
 
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
+fn is_url(input: &str) -> bool {
+    input.starts_with("http://") || input.starts_with("https://")
+}
+
+/// Normalize an asciinema.org recording URL to its raw `.cast` download URL.
+/// For example, `https://asciinema.org/a/abc123` becomes
+/// `https://asciinema.org/a/abc123.cast`.
+fn normalize_url(url: &str) -> String {
+    if url.contains("asciinema.org/a/") && !url.ends_with(".cast") {
+        format!("{}.cast", url)
+    } else {
+        url.to_string()
+    }
 }
 
 impl Session {
-    fn new(filename: &str) -> Self {
+    fn new(source: &str) -> Self {
+        if is_url(source) {
+            Self::from_url(source)
+        } else {
+            Self::from_file(source)
+        }
+    }
+
+    fn from_file(filename: &str) -> Self {
         if !Path::new(filename).exists() {
-            println!("session with name {} does not exist", filename);
+            eprintln!("File {} does not exist", filename);
             exit(1);
         }
 
-        let mut line_iter = read_lines(filename).unwrap();
-        let header_line = line_iter.next().unwrap();
-        let header: RecordHeader = serde_json::from_str(header_line.unwrap().as_str()).unwrap();
+        let file = File::open(filename).unwrap();
+        Self::from_reader(Box::new(io::BufReader::new(file)))
+    }
+
+    fn from_url(url: &str) -> Self {
+        let url = normalize_url(url);
+        let response = reqwest::blocking::get(&url).unwrap_or_else(|e| {
+            eprintln!("Failed to fetch URL {}: {}", url, e);
+            exit(1);
+        });
+
+        if !response.status().is_success() {
+            eprintln!("Failed to fetch URL {}: HTTP {}", url, response.status());
+            exit(1);
+        }
+
+        Self::from_reader(Box::new(io::BufReader::new(response)))
+    }
+
+    fn from_reader(reader: Box<dyn BufRead>) -> Self {
+        let mut line_iter = reader.lines();
+        let header_line = line_iter
+            .next()
+            .unwrap_or_else(|| {
+                eprintln!("error: session file is empty");
+                exit(1);
+            })
+            .unwrap_or_else(|e| {
+                eprintln!("error: failed to read session header: {}", e);
+                exit(1);
+            });
+        let header: RecordHeader = serde_json::from_str(&header_line).unwrap_or_else(|e| {
+            eprintln!("error: session file has an invalid header: {}", e);
+            exit(1);
+        });
         Session { header, line_iter }
     }
 
@@ -143,6 +190,8 @@ mod tests {
     use crate::Play;
     use std::path::PathBuf;
 
+    use super::{is_url, normalize_url};
+
     fn test_data_path() -> String {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("testdata/play.txt");
@@ -171,5 +220,32 @@ mod tests {
     fn test_play_with_speed_and_idle_time_limit() {
         let play = Play::new(test_data_path(), Some(0.5), 2.0);
         play.execute();
+    }
+
+    #[test]
+    fn test_is_url() {
+        assert!(is_url("https://asciinema.org/a/abc123"));
+        assert!(is_url("http://example.com/recording.cast"));
+        assert!(!is_url("my_recording.cast"));
+        assert!(!is_url("/path/to/recording.cast"));
+        assert!(!is_url("C:\\recordings\\session.cast"));
+    }
+
+    #[test]
+    fn test_normalize_url_asciinema() {
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123"),
+            "https://asciinema.org/a/abc123.cast"
+        );
+        // Already has .cast – should not double-append
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123.cast"),
+            "https://asciinema.org/a/abc123.cast"
+        );
+        // Non-asciinema URL – should be returned unchanged
+        assert_eq!(
+            normalize_url("https://example.com/recording.cast"),
+            "https://example.com/recording.cast"
+        );
     }
 }
