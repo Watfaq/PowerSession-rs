@@ -24,6 +24,24 @@ use windows::Win32::{
     },
 };
 
+#[cfg(windows)]
+struct ConsoleGuard {
+    handle: HANDLE,
+    original_mode: CONSOLE_MODE,
+}
+
+#[cfg(windows)]
+impl Drop for ConsoleGuard {
+    fn drop(&mut self) {
+        unsafe {
+            // Best-effort restoration; log any failure but don't panic
+            if let Err(e) = SetConsoleMode(self.handle, self.original_mode) {
+                eprintln!("Warning: failed to restore console mode: {:?}", e);
+            }
+        }
+    }
+}
+
 enum SessionLineSource {
     File(io::Lines<io::BufReader<File>>),
     Vec(std::vec::IntoIter<SessionLine>),
@@ -43,7 +61,8 @@ impl Iterator for StdoutIter {
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.0.line_iter {
             SessionLineSource::Vec(iter) => iter.next(),
-            SessionLineSource::File(iter) => iter.next().map(|line| {
+            SessionLineSource::File(iter) => loop {
+                let line = iter.next()?;
                 let content = match line {
                     Ok(l) => l,
                     Err(e) => {
@@ -51,6 +70,10 @@ impl Iterator for StdoutIter {
                         exit(1);
                     }
                 };
+                // Skip empty or whitespace-only lines
+                if content.trim().is_empty() {
+                    continue;
+                }
                 let line_data: Vec<LineItem> = match serde_json::from_str(&content) {
                     Ok(data) => data,
                     Err(e) => {
@@ -63,7 +86,7 @@ impl Iterator for StdoutIter {
                     exit(1);
                 }
 
-                SessionLine {
+                let session_line = SessionLine {
                     timestamp: match &line_data[0] {
                         LineItem::F64(ts) => ts.clone(),
                         _ => {
@@ -85,8 +108,9 @@ impl Iterator for StdoutIter {
                             exit(1);
                         }
                     },
-                }
-            }),
+                };
+                return Some(session_line);
+            },
         }
     }
 }
@@ -123,6 +147,50 @@ where
 }
 
 impl Session {
+    fn parse_v1_format(filename: &str, file_content: String) -> Self {
+        match serde_json::from_str::<V1Recording>(&file_content) {
+            Ok(recording) if recording.version == 1 => {
+                let header = RecordHeader {
+                    version: recording.version,
+                    width: recording.width,
+                    height: recording.height,
+                    timestamp: 0,
+                    environment: HashMap::new(),
+                };
+
+                let mut absolute_time: f64 = 0.0;
+                let events: Vec<SessionLine> = recording
+                    .stdout
+                    .into_iter()
+                    .map(|(delay, text)| {
+                        absolute_time += delay;
+                        SessionLine {
+                            timestamp: absolute_time,
+                            stdout: true,
+                            content: text,
+                        }
+                    })
+                    .collect();
+
+                Session {
+                    header,
+                    line_iter: SessionLineSource::Vec(events.into_iter()),
+                }
+            }
+            Ok(recording) => {
+                eprintln!(
+                    "'{}': unsupported file format version {}",
+                    filename, recording.version
+                );
+                exit(1);
+            }
+            Err(e) => {
+                eprintln!("'{}': unsupported or corrupt session file: {}", filename, e);
+                exit(1);
+            }
+        }
+    }
+
     fn new(filename: &str) -> Self {
         if !Path::new(filename).exists() {
             eprintln!("session with name {} does not exist", filename);
@@ -150,9 +218,27 @@ impl Session {
 
         if let Ok(header) = serde_json::from_str::<RecordHeader>(&first_line) {
             // v2 format: header on first line, events on subsequent lines
-            Session {
-                header,
-                line_iter: SessionLineSource::File(line_iter),
+            // Validate that this is actually v2 (version == 2)
+            if header.version == 2 {
+                Session {
+                    header,
+                    line_iter: SessionLineSource::File(line_iter),
+                }
+            } else {
+                // Not v2, fall through to try v1 format parsing below
+                // Re-read the file for v1 parsing since we consumed the first line
+                let mut file_content = first_line;
+                for line in line_iter {
+                    file_content.push('\n');
+                    match line {
+                        Ok(l) => file_content.push_str(&l),
+                        Err(e) => {
+                            eprintln!("error reading '{}': {}", filename, e);
+                            exit(1);
+                        }
+                    }
+                }
+                Self::parse_v1_format(filename, file_content)
             }
         } else {
             // Try v1 format: entire file is a single JSON object.
@@ -168,47 +254,7 @@ impl Session {
                     }
                 }
             }
-            match serde_json::from_str::<V1Recording>(&file_content) {
-                Ok(recording) if recording.version == 1 => {
-                    let header = RecordHeader {
-                        version: recording.version,
-                        width: recording.width,
-                        height: recording.height,
-                        timestamp: 0,
-                        environment: HashMap::new(),
-                    };
-
-                    let mut absolute_time: f64 = 0.0;
-                    let events: Vec<SessionLine> = recording
-                        .stdout
-                        .into_iter()
-                        .map(|(delay, text)| {
-                            absolute_time += delay;
-                            SessionLine {
-                                timestamp: absolute_time,
-                                stdout: true,
-                                content: text,
-                            }
-                        })
-                        .collect();
-
-                    Session {
-                        header,
-                        line_iter: SessionLineSource::Vec(events.into_iter()),
-                    }
-                }
-                Ok(recording) => {
-                    eprintln!(
-                        "'{}': unsupported file format version {}",
-                        filename, recording.version
-                    );
-                    exit(1);
-                }
-                Err(e) => {
-                    eprintln!("'{}': unsupported or corrupt session file: {}", filename, e);
-                    exit(1);
-                }
-            }
+            Self::parse_v1_format(filename, file_content)
         }
     }
 
@@ -273,11 +319,9 @@ impl Play {
 
         // On Windows: save stdin console mode and switch to raw (no line
         // buffering / no echo) so space arrives immediately without Enter.
-        // We manage this in the *main* thread so the restore is guaranteed to
-        // run when execute() returns, even if the reader thread is still
-        // blocked inside ReadFile.
+        // We use an RAII guard to ensure console mode is restored on all exit paths.
         #[cfg(windows)]
-        let stdin_restore: Option<(isize, u32)> = unsafe {
+        let _console_guard: Option<ConsoleGuard> = unsafe {
             match GetStdHandle(STD_INPUT_HANDLE) {
                 Ok(h) if !h.is_invalid() => {
                     let mut orig = CONSOLE_MODE::default();
@@ -291,8 +335,15 @@ impl Play {
                         let mut raw = orig;
                         raw &= !ENABLE_LINE_INPUT;
                         raw &= !ENABLE_ECHO_INPUT;
-                        SetConsoleMode(h, raw).ok();
-                        Some((h.0 as isize, orig.0))
+                        if let Err(e) = SetConsoleMode(h, raw) {
+                            warn!("pause: failed to set console mode: {:?}; space-to-pause is disabled", e);
+                            None
+                        } else {
+                            Some(ConsoleGuard {
+                                handle: h,
+                                original_mode: orig,
+                            })
+                        }
                     }
                 }
                 _ => {
@@ -306,54 +357,58 @@ impl Play {
         };
 
         // Spawn a thread that reads stdin and toggles pause when space is pressed.
-        // Console mode is already configured by the main thread above.
-        thread::spawn(move || {
-            #[cfg(windows)]
-            unsafe {
-                let stdin_handle = match GetStdHandle(STD_INPUT_HANDLE) {
-                    Ok(h) if !h.is_invalid() => h,
-                    _ => return,
-                };
-                loop {
-                    let mut buf = [0u8; 1];
-                    let mut n_read: u32 = 0;
-                    if ReadFile(stdin_handle, Some(&mut buf), Some(&mut n_read), None).is_err()
-                        || n_read == 0
-                    {
-                        break;
-                    }
-                    if buf[0] == b' ' {
-                        let (lock, cvar) = &*pair_clone;
-                        let mut paused = lock.lock().unwrap();
-                        *paused = !*paused;
-                        cvar.notify_all();
-                    }
-                }
-            }
-
-            #[cfg(not(windows))]
-            {
-                use std::io::{IsTerminal, Read};
-                // Only enable pause when stdin is an interactive terminal; don't
-                // consume piped input in tests or scripted environments.
-                if !std::io::stdin().is_terminal() {
-                    return;
-                }
-                loop {
-                    let mut buf = [0u8; 1];
-                    match std::io::stdin().lock().read(&mut buf) {
-                        Ok(1) if buf[0] == b' ' => {
+        // Only spawn the thread when pause support is actually enabled.
+        #[cfg(windows)]
+        if _console_guard.is_some() {
+            thread::spawn(move || {
+                unsafe {
+                    let stdin_handle = match GetStdHandle(STD_INPUT_HANDLE) {
+                        Ok(h) if !h.is_invalid() => h,
+                        _ => return,
+                    };
+                    loop {
+                        let mut buf = [0u8; 1];
+                        let mut n_read: u32 = 0;
+                        if ReadFile(stdin_handle, Some(&mut buf), Some(&mut n_read), None).is_err()
+                            || n_read == 0
+                        {
+                            break;
+                        }
+                        if buf[0] == b' ' {
                             let (lock, cvar) = &*pair_clone;
                             let mut paused = lock.lock().unwrap();
                             *paused = !*paused;
                             cvar.notify_all();
                         }
-                        Ok(n) if n > 0 => {}
-                        _ => break,
                     }
                 }
+            });
+        }
+
+        #[cfg(not(windows))]
+        {
+            use std::io::IsTerminal;
+            // Only enable pause when stdin is an interactive terminal; don't
+            // consume piped input in tests or scripted environments.
+            if std::io::stdin().is_terminal() {
+                thread::spawn(move || {
+                    use std::io::Read;
+                    loop {
+                        let mut buf = [0u8; 1];
+                        match std::io::stdin().lock().read(&mut buf) {
+                            Ok(1) if buf[0] == b' ' => {
+                                let (lock, cvar) = &*pair_clone;
+                                let mut paused = lock.lock().unwrap();
+                                *paused = !*paused;
+                                cvar.notify_all();
+                            }
+                            Ok(n) if n > 0 => {}
+                            _ => break,
+                        }
+                    }
+                });
             }
-        });
+        }
 
         for stdout_item in self.session.stdout_relative_time_iter() {
             let mut delay = stdout_item.timestamp;
@@ -369,14 +424,7 @@ impl Play {
                 .unwrap();
             io::stdout().flush().unwrap();
         }
-
-        // Restore the original console mode now that playback is done.
-        #[cfg(windows)]
-        unsafe {
-            if let Some((handle_val, mode_val)) = stdin_restore {
-                SetConsoleMode(HANDLE(handle_val as _), CONSOLE_MODE(mode_val)).ok();
-            }
-        }
+        // Console mode is automatically restored by the ConsoleGuard's Drop impl
     }
 }
 
