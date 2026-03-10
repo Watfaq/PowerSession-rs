@@ -30,29 +30,45 @@ impl Iterator for StdoutIter {
         match &mut self.0.line_iter {
             SessionLineSource::Vec(iter) => iter.next(),
             SessionLineSource::File(iter) => iter.next().map(|line| {
-                let content = line.unwrap();
-                let line_data: Vec<LineItem> = serde_json::from_str(&content).unwrap();
+                let content = match line {
+                    Ok(l) => l,
+                    Err(e) => {
+                        eprintln!("error reading session data: {}", e);
+                        exit(1);
+                    }
+                };
+                let line_data: Vec<LineItem> = match serde_json::from_str(&content) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        eprintln!("corrupt record data: {}", e);
+                        exit(1);
+                    }
+                };
                 if line_data.len() != 3 {
-                    panic!("invalid record data");
+                    eprintln!("corrupt record: expected 3 fields, got {}", line_data.len());
+                    exit(1);
                 }
 
                 SessionLine {
                     timestamp: match &line_data[0] {
                         LineItem::F64(ts) => ts.clone(),
                         _ => {
-                            panic!("corrupt record");
+                            eprintln!("corrupt record: expected timestamp as number");
+                            exit(1);
                         }
                     },
                     stdout: match &line_data[1] {
                         LineItem::String(flag) => flag == "o",
                         _ => {
-                            panic!("corrupt record");
+                            eprintln!("corrupt record: expected event type as string");
+                            exit(1);
                         }
                     },
                     content: match &line_data[2] {
                         LineItem::String(line) => line.clone(),
                         _ => {
-                            panic!("corrupt record");
+                            eprintln!("corrupt record: expected content as string");
+                            exit(1);
                         }
                     },
                 }
@@ -95,12 +111,28 @@ where
 impl Session {
     fn new(filename: &str) -> Self {
         if !Path::new(filename).exists() {
-            println!("session with name {} does not exist", filename);
+            eprintln!("session with name {} does not exist", filename);
             exit(1);
         }
 
-        let mut line_iter = read_lines(filename).unwrap();
-        let first_line = line_iter.next().unwrap().unwrap();
+        let mut line_iter = match read_lines(filename) {
+            Ok(iter) => iter,
+            Err(e) => {
+                eprintln!("error opening '{}': {}", filename, e);
+                exit(1);
+            }
+        };
+        let first_line = match line_iter.next() {
+            Some(Ok(line)) => line,
+            Some(Err(e)) => {
+                eprintln!("error reading '{}': {}", filename, e);
+                exit(1);
+            }
+            None => {
+                eprintln!("'{}': file is empty", filename);
+                exit(1);
+            }
+        };
 
         if let Ok(header) = serde_json::from_str::<RecordHeader>(&first_line) {
             // v2 format: header on first line, events on subsequent lines
@@ -114,7 +146,13 @@ impl Session {
             let mut file_content = first_line;
             for line in line_iter {
                 file_content.push('\n');
-                file_content.push_str(&line.unwrap());
+                match line {
+                    Ok(l) => file_content.push_str(&l),
+                    Err(e) => {
+                        eprintln!("error reading '{}': {}", filename, e);
+                        exit(1);
+                    }
+                }
             }
             match serde_json::from_str::<V1Recording>(&file_content) {
                 Ok(recording) if recording.version == 1 => {
@@ -145,8 +183,15 @@ impl Session {
                         line_iter: SessionLineSource::Vec(events.into_iter()),
                     }
                 }
-                _ => {
-                    println!("unsupported or corrupt session file format");
+                Ok(recording) => {
+                    eprintln!(
+                        "'{}': unsupported file format version {}",
+                        filename, recording.version
+                    );
+                    exit(1);
+                }
+                Err(e) => {
+                    eprintln!("'{}': unsupported or corrupt session file: {}", filename, e);
                     exit(1);
                 }
             }
