@@ -82,10 +82,38 @@ fn is_url(input: &str) -> bool {
 /// Normalize an asciinema.org recording URL to its raw `.cast` download URL.
 /// For example, `https://asciinema.org/a/abc123` becomes
 /// `https://asciinema.org/a/abc123.cast`.
+/// Query strings and fragments are preserved (e.g. `?t=10` stays after `.cast`).
 fn normalize_url(url: &str) -> String {
-    if url.contains("asciinema.org/a/") && !url.ends_with(".cast") {
-        format!("{}.cast", url)
+    // Split off fragment, preserving the leading '#'
+    let (before_fragment, fragment) = match url.find('#') {
+        Some(idx) => (&url[..idx], &url[idx..]),
+        None => (url, ""),
+    };
+
+    // Split off query, preserving the leading '?'
+    let (mut main, query) = match before_fragment.find('?') {
+        Some(idx) => (&before_fragment[..idx], &before_fragment[idx..]),
+        None => (before_fragment, ""),
+    };
+
+    // Only normalize asciinema recording URLs
+    if main.contains("asciinema.org/a/") {
+        // Remove a trailing slash from the path, if present
+        if main.ends_with('/') {
+            main = &main[..main.len() - 1];
+        }
+
+        let mut normalized = main.to_string();
+        if !normalized.ends_with(".cast") {
+            normalized.push_str(".cast");
+        }
+
+        // Reattach query and fragment in their original order
+        normalized.push_str(query);
+        normalized.push_str(fragment);
+        normalized
     } else {
+        // Non-asciinema URLs are returned unchanged
         url.to_string()
     }
 }
@@ -233,6 +261,7 @@ mod tests {
 
     #[test]
     fn test_normalize_url_asciinema() {
+        // Basic recording URL
         assert_eq!(
             normalize_url("https://asciinema.org/a/abc123"),
             "https://asciinema.org/a/abc123.cast"
@@ -246,6 +275,26 @@ mod tests {
         assert_eq!(
             normalize_url("https://example.com/recording.cast"),
             "https://example.com/recording.cast"
+        );
+        // URL with query string – .cast inserted before '?'
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123?t=10"),
+            "https://asciinema.org/a/abc123.cast?t=10"
+        );
+        // URL with trailing slash – slash stripped before appending .cast
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123/"),
+            "https://asciinema.org/a/abc123.cast"
+        );
+        // URL with fragment – .cast inserted before '#'
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123#intro"),
+            "https://asciinema.org/a/abc123.cast#intro"
+        );
+        // URL with both query string and fragment
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123?t=10#intro"),
+            "https://asciinema.org/a/abc123.cast?t=10#intro"
         );
     }
 }

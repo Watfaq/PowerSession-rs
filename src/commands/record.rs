@@ -23,6 +23,7 @@ use windows::Win32::{
 
 use crate::commands::types::LineItem;
 use crate::commands::types::RecordHeader;
+#[cfg(windows)]
 use crate::terminal::Terminal;
 #[cfg(windows)]
 use crate::terminal::WindowsTerminal;
