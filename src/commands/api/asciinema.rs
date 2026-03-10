@@ -1,4 +1,4 @@
-use super::ApiService;
+use super::{ApiService, StreamInfo};
 
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -192,6 +192,65 @@ impl ApiService for Asciinema {
             println!("{}", res.text().unwrap());
             None
         }
+    }
+
+    fn create_stream(&self, cols: u16, rows: u16) -> Option<StreamInfo> {
+        #[derive(Deserialize)]
+        struct CreateStreamResponse {
+            id: String,
+            url: String,
+            ws_producer_url: String,
+        }
+
+        let stream_url = format!("{}/api/streams", &self.config.api_server);
+        let body = serde_json::json!({ "cols": cols, "rows": rows });
+        let res = match self
+            .http_client
+            .post(stream_url)
+            .json(&body)
+            .send()
+        {
+            Ok(r) => r,
+            Err(e) => {
+                println!("Failed to reach stream server: {}", e);
+                return None;
+            }
+        };
+
+        if res.status().is_success() {
+            match res.json::<CreateStreamResponse>() {
+                Ok(resp) => Some(StreamInfo {
+                    id: resp.id,
+                    url: resp.url,
+                    ws_producer_url: resp.ws_producer_url,
+                }),
+                Err(e) => {
+                    println!("Failed to parse stream response: {}", e);
+                    None
+                }
+            }
+        } else {
+            println!("Failed to create stream:");
+            println!("{}", res.text().unwrap_or_default());
+            None
+        }
+    }
+
+    fn get_stream_ws_url(&self, stream_id: &str) -> String {
+        // Derive the producer WebSocket URL from the server base URL and stream ID.
+        // The path follows the asciinema server convention: /ws/S/<stream_id>
+        let base = self
+            .config
+            .api_server
+            .trim_end_matches('/')
+            .replace("https://", "wss://")
+            .replace("http://", "ws://");
+        format!("{}/ws/S/{}", base, stream_id)
+    }
+
+    fn get_auth_header(&self) -> String {
+        let cred = format!("user:{}", self.config.install_id);
+        format!("Basic {}", BASE64_STANDARD.encode(&cred))
     }
 }
 
