@@ -181,9 +181,11 @@ impl Record {
                         let line = serde_json::to_string(&data).unwrap() + "\n";
                         stdin_output_writer
                             .lock()
-                            .unwrap()
+                            .expect("failed to acquire output writer lock")
                             .write_all(line.as_bytes())
-                            .unwrap();
+                            .expect("failed to write stdin event to output file");
+                    } else {
+                        trace!("stdin contains invalid UTF-8 sequence; skipping recording of this input");
                     }
                 }
 
