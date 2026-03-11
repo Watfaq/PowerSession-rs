@@ -34,7 +34,7 @@ rustc_version_runtime = "0.3.0"
 os_info = "3"
 base64 = "0.22"
 
-#[cfg(windows)]
+[target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Security",

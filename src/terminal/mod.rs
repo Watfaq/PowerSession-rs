@@ -18,6 +18,7 @@ pub trait Terminal {
 }
 
 #[cfg(test)]
+#[cfg(windows)]
 mod tests {
     use crate::terminal::{Terminal, WindowsTerminal};
     use std::borrow::Borrow;

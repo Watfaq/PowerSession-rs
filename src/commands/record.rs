@@ -23,7 +23,10 @@ use windows::Win32::{
 
 use crate::commands::types::LineItem;
 use crate::commands::types::RecordHeader;
-use crate::terminal::{Terminal, WindowsTerminal};
+#[cfg(windows)]
+use crate::terminal::Terminal;
+#[cfg(windows)]
+use crate::terminal::WindowsTerminal;
 
 pub struct Record {
     output_writer: Arc<Mutex<Box<dyn Write + Send + Sync>>>,
@@ -58,6 +61,7 @@ impl Record {
             env: env.unwrap_or_default(),
             command: command
                 .unwrap_or_else(|| env::var("SHELL").unwrap_or("powershell.exe".to_owned())),
+            #[cfg(windows)]
             terminal: WindowsTerminal::new(None),
         }
     }
@@ -87,8 +91,14 @@ impl Record {
 
         let header = RecordHeader {
             version: 2,
+            #[cfg(windows)]
             width: self.terminal.width,
+            #[cfg(not(windows))]
+            width: 80,
+            #[cfg(windows)]
             height: self.terminal.height,
+            #[cfg(not(windows))]
+            height: 24,
             timestamp: record_start_time as u64,
             environment: self.env.clone(),
         };
@@ -232,8 +242,18 @@ impl Record {
             }
         });
 
-        self.terminal.attach_stdin(stdin_rx);
-        self.terminal.attach_stdout(stdout_tx);
-        self.terminal.run(&self.command).unwrap();
+        #[cfg(windows)]
+        {
+            self.terminal.attach_stdin(stdin_rx);
+            self.terminal.attach_stdout(stdout_tx);
+            self.terminal.run(&self.command).unwrap();
+        }
+        #[cfg(not(windows))]
+        {
+            drop(stdin_rx);
+            drop(stdout_tx);
+            eprintln!("error: recording is only supported on Windows");
+            std::process::exit(1);
+        }
     }
 }
