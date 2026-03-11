@@ -43,7 +43,7 @@ impl Drop for ConsoleGuard {
 }
 
 enum SessionLineSource {
-    File(io::Lines<io::BufReader<File>>),
+    Lines(io::Lines<Box<dyn BufRead>>),
     Vec(std::vec::IntoIter<SessionLine>),
 }
 
@@ -61,7 +61,7 @@ impl Iterator for StdoutIter {
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.0.line_iter {
             SessionLineSource::Vec(iter) => iter.next(),
-            SessionLineSource::File(iter) => loop {
+            SessionLineSource::Lines(iter) => loop {
                 let line = iter.next()?;
                 let content = match line {
                     Ok(l) => l,
@@ -70,7 +70,7 @@ impl Iterator for StdoutIter {
                         exit(1);
                     }
                 };
-                // Skip empty or whitespace-only lines
+                // Skip empty or whitespace-only lines (e.g. trailing newlines in files)
                 if content.trim().is_empty() {
                     continue;
                 }
@@ -138,124 +138,193 @@ impl Iterator for StdoutRelativeTimeIter {
     }
 }
 
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
+fn is_url(input: &str) -> bool {
+    input.starts_with("http://") || input.starts_with("https://")
 }
 
-impl Session {
-    fn parse_v1_format(filename: &str, file_content: String) -> Self {
-        match serde_json::from_str::<V1Recording>(&file_content) {
-            Ok(recording) if recording.version == 1 => {
-                let header = RecordHeader {
-                    version: recording.version,
-                    width: recording.width,
-                    height: recording.height,
-                    timestamp: 0,
-                    environment: HashMap::new(),
-                };
+/// Normalize an asciinema.org recording URL to its raw `.cast` download URL.
+/// For example, `https://asciinema.org/a/abc123` becomes
+/// `https://asciinema.org/a/abc123.cast`.
+/// Query strings and fragments are preserved (e.g. `?t=10` stays after `.cast`).
+fn normalize_url(url: &str) -> String {
+    // Split off fragment, preserving the leading '#'
+    let (before_fragment, fragment) = match url.find('#') {
+        Some(idx) => (&url[..idx], &url[idx..]),
+        None => (url, ""),
+    };
 
-                let mut absolute_time: f64 = 0.0;
-                let events: Vec<SessionLine> = recording
-                    .stdout
-                    .into_iter()
-                    .map(|(delay, text)| {
-                        absolute_time += delay;
-                        SessionLine {
-                            timestamp: absolute_time,
-                            stdout: true,
-                            content: text,
-                        }
-                    })
-                    .collect();
+    // Split off query, preserving the leading '?'
+    let (mut main, query) = match before_fragment.find('?') {
+        Some(idx) => (&before_fragment[..idx], &before_fragment[idx..]),
+        None => (before_fragment, ""),
+    };
 
-                Session {
-                    header,
-                    line_iter: SessionLineSource::Vec(events.into_iter()),
-                }
-            }
-            Ok(recording) => {
-                eprintln!(
-                    "'{}': unsupported file format version {}",
-                    filename, recording.version
-                );
-                exit(1);
-            }
-            Err(e) => {
-                eprintln!("'{}': unsupported or corrupt session file: {}", filename, e);
-                exit(1);
-            }
+    // Only normalize asciinema recording URLs
+    if main.contains("asciinema.org/a/") {
+        // Remove a trailing slash from the path, if present
+        if main.ends_with('/') {
+            main = &main[..main.len() - 1];
         }
-    }
 
-    fn new(filename: &str) -> Self {
-        if !Path::new(filename).exists() {
-            eprintln!("session with name {} does not exist", filename);
+        let mut normalized = main.to_string();
+        if !normalized.ends_with(".cast") {
+            normalized.push_str(".cast");
+        }
+
+        // Reattach query and fragment in their original order
+        normalized.push_str(query);
+        normalized.push_str(fragment);
+        normalized
+    } else {
+        // Non-asciinema URLs are returned unchanged
+        url.to_string()
+    }
+}
+
+/// Parse a session from a buffered reader, detecting v2 or v1 format automatically.
+/// The `source_name` is used only in error messages.
+fn parse_reader(reader: Box<dyn BufRead>, source_name: &str) -> Session {
+    let mut line_iter: io::Lines<Box<dyn BufRead>> = reader.lines();
+
+    let first_line = match line_iter.next() {
+        Some(Ok(line)) => line,
+        Some(Err(e)) => {
+            eprintln!("error reading '{}': {}", source_name, e);
             exit(1);
         }
+        None => {
+            eprintln!("'{}': file is empty", source_name);
+            exit(1);
+        }
+    };
 
-        let mut line_iter = match read_lines(filename) {
-            Ok(iter) => iter,
-            Err(e) => {
-                eprintln!("error opening '{}': {}", filename, e);
-                exit(1);
-            }
-        };
-        let first_line = match line_iter.next() {
-            Some(Ok(line)) => line,
-            Some(Err(e)) => {
-                eprintln!("error reading '{}': {}", filename, e);
-                exit(1);
-            }
-            None => {
-                eprintln!("'{}': file is empty", filename);
-                exit(1);
-            }
-        };
-
-        if let Ok(header) = serde_json::from_str::<RecordHeader>(&first_line) {
-            // v2 format: header on first line, events on subsequent lines
-            // Validate that this is actually v2 (version == 2)
-            if header.version == 2 {
-                Session {
-                    header,
-                    line_iter: SessionLineSource::File(line_iter),
-                }
-            } else {
-                // Not v2, fall through to try v1 format parsing below
-                // Re-read the file for v1 parsing since we consumed the first line
-                let mut file_content = first_line;
-                for line in line_iter {
-                    file_content.push('\n');
-                    match line {
-                        Ok(l) => file_content.push_str(&l),
-                        Err(e) => {
-                            eprintln!("error reading '{}': {}", filename, e);
-                            exit(1);
-                        }
-                    }
-                }
-                Self::parse_v1_format(filename, file_content)
+    if let Ok(header) = serde_json::from_str::<RecordHeader>(&first_line) {
+        // v2 format: header on first line, events stream on subsequent lines.
+        // Validate version == 2 to avoid misclassifying v1 recordings that
+        // happen to contain a timestamp field parseable as RecordHeader.
+        if header.version == 2 {
+            Session {
+                header,
+                line_iter: SessionLineSource::Lines(line_iter),
             }
         } else {
-            // Try v1 format: entire file is a single JSON object.
-            // Collect remaining lines from the already-opened iterator to avoid re-reading the file.
+            // Not v2 — fall through and try v1 parsing with the full content.
             let mut file_content = first_line;
             for line in line_iter {
                 file_content.push('\n');
                 match line {
                     Ok(l) => file_content.push_str(&l),
                     Err(e) => {
-                        eprintln!("error reading '{}': {}", filename, e);
+                        eprintln!("error reading '{}': {}", source_name, e);
                         exit(1);
                     }
                 }
             }
-            Self::parse_v1_format(filename, file_content)
+            parse_v1(source_name, file_content)
         }
+    } else {
+        // Try v1 format: entire content is a single JSON object.
+        // Collect remaining lines from the already-opened iterator.
+        let mut file_content = first_line;
+        for line in line_iter {
+            file_content.push('\n');
+            match line {
+                Ok(l) => file_content.push_str(&l),
+                Err(e) => {
+                    eprintln!("error reading '{}': {}", source_name, e);
+                    exit(1);
+                }
+            }
+        }
+        parse_v1(source_name, file_content)
+    }
+}
+
+fn parse_v1(source_name: &str, file_content: String) -> Session {
+    match serde_json::from_str::<V1Recording>(&file_content) {
+        Ok(recording) if recording.version == 1 => {
+            let header = RecordHeader {
+                version: recording.version,
+                width: recording.width,
+                height: recording.height,
+                timestamp: 0,
+                environment: HashMap::new(),
+            };
+
+            let mut absolute_time: f64 = 0.0;
+            let events: Vec<SessionLine> = recording
+                .stdout
+                .into_iter()
+                .map(|(delay, text)| {
+                    absolute_time += delay;
+                    SessionLine {
+                        timestamp: absolute_time,
+                        stdout: true,
+                        content: text,
+                    }
+                })
+                .collect();
+
+            Session {
+                header,
+                line_iter: SessionLineSource::Vec(events.into_iter()),
+            }
+        }
+        Ok(recording) => {
+            eprintln!(
+                "'{}': unsupported file format version {}",
+                source_name, recording.version
+            );
+            exit(1);
+        }
+        Err(e) => {
+            eprintln!(
+                "'{}': unsupported or corrupt session file: {}",
+                source_name, e
+            );
+            exit(1);
+        }
+    }
+}
+
+impl Session {
+    fn new(source: &str) -> Self {
+        if is_url(source) {
+            Self::from_url(source)
+        } else {
+            Self::from_file(source)
+        }
+    }
+
+    fn from_file(filename: &str) -> Self {
+        if !Path::new(filename).exists() {
+            eprintln!("session with name {} does not exist", filename);
+            exit(1);
+        }
+
+        let file = match File::open(filename) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("error opening '{}': {}", filename, e);
+                exit(1);
+            }
+        };
+        parse_reader(Box::new(io::BufReader::new(file)), filename)
+    }
+
+    fn from_url(url: &str) -> Self {
+        let url = normalize_url(url);
+        let response = reqwest::blocking::get(&url).unwrap_or_else(|e| {
+            eprintln!("failed to fetch URL {}: {}", url, e);
+            exit(1);
+        });
+
+        if !response.status().is_success() {
+            eprintln!("failed to fetch URL {}: HTTP {}", url, response.status());
+            exit(1);
+        }
+
+        parse_reader(Box::new(io::BufReader::new(response)), &url)
     }
 
     fn stdout_iter(self) -> StdoutIter {
@@ -430,7 +499,7 @@ impl Play {
 
 #[cfg(test)]
 mod tests {
-    use super::wait_interruptible;
+    use super::{is_url, normalize_url, wait_interruptible};
     use crate::Play;
     use std::path::PathBuf;
     use std::sync::{Arc, Condvar, Mutex};
@@ -532,5 +601,53 @@ mod tests {
 
         // Must have waited at least ~50 ms for the resume signal.
         assert!(elapsed >= Duration::from_millis(30));
+    }
+
+    #[test]
+    fn test_is_url() {
+        assert!(is_url("https://asciinema.org/a/abc123"));
+        assert!(is_url("http://example.com/recording.cast"));
+        assert!(!is_url("my_recording.cast"));
+        assert!(!is_url("/path/to/recording.cast"));
+        assert!(!is_url("C:\\recordings\\session.cast"));
+    }
+
+    #[test]
+    fn test_normalize_url_asciinema() {
+        // Basic recording URL
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123"),
+            "https://asciinema.org/a/abc123.cast"
+        );
+        // Already has .cast – should not double-append
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123.cast"),
+            "https://asciinema.org/a/abc123.cast"
+        );
+        // Non-asciinema URL – should be returned unchanged
+        assert_eq!(
+            normalize_url("https://example.com/recording.cast"),
+            "https://example.com/recording.cast"
+        );
+        // URL with query string – .cast inserted before '?'
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123?t=10"),
+            "https://asciinema.org/a/abc123.cast?t=10"
+        );
+        // URL with trailing slash – slash stripped before appending .cast
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123/"),
+            "https://asciinema.org/a/abc123.cast"
+        );
+        // URL with fragment – .cast inserted before '#'
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123#intro"),
+            "https://asciinema.org/a/abc123.cast#intro"
+        );
+        // URL with both query string and fragment
+        assert_eq!(
+            normalize_url("https://asciinema.org/a/abc123?t=10#intro"),
+            "https://asciinema.org/a/abc123.cast?t=10#intro"
+        );
     }
 }
