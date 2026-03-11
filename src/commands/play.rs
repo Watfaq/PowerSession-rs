@@ -289,11 +289,7 @@ fn parse_v1(source_name: &str, file_content: String) -> Session {
 
 impl Session {
     fn new(source: &str) -> Self {
-        if is_url(source) {
-            Self::from_url(source)
-        } else {
-            Self::from_file(source)
-        }
+        if is_url(source) { Self::from_url(source) } else { Self::from_file(source) }
     }
 
     fn from_file(filename: &str) -> Self {

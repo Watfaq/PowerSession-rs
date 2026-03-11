@@ -7,8 +7,8 @@ mod terminal;
 
 use clap::builder::styling::{AnsiColor, Styles};
 use clap::{Arg, Command, crate_version};
-use commands::{Asciinema, Auth, Play};
-use commands::{Record, Upload};
+use commands::{Asciinema, Auth, Play, Stream};
+use commands::{ApiService, Record, Upload};
 use fern::colors::ColoredLevelConfig;
 use log::trace;
 
@@ -70,7 +70,7 @@ fn main() {
                 .about("Play a recorded session")
                 .arg(
                     Arg::new("file")
-                        .help("The record session")
+                        .help("The record session file path or URL (e.g. https://asciinema.org/a/<id>)")
                         .index(1)
                         .required(true),
                 )
@@ -128,6 +128,23 @@ fn main() {
                         .help("The url of asciinema server. default is https://asciinema.org")
                         .index(1)
                         .required(true),
+                ),
+        )
+        .subcommand(
+            Command::new("stream")
+                .about("Stream a live terminal session to the asciinema server")
+                .arg(
+                    Arg::new("command")
+                        .help("The command to stream, defaults to $SHELL")
+                        .num_args(1)
+                        .short('c')
+                        .long("command"),
+                )
+                .arg(
+                    Arg::new("id")
+                        .help("Reconnect to an existing stream by its ID")
+                        .num_args(1)
+                        .long("id"),
                 ),
         )
         .arg(
@@ -198,6 +215,49 @@ fn main() {
                 Ok(_) => Asciinema::change_server(url.to_string()),
                 Err(_) => println!("Error: not a correct URL - e.g: https://asciinema.org"),
             }
+        }
+        Some(("stream", stream_matches)) => {
+            let api_service = Asciinema::new();
+            let command = stream_matches
+                .get_one::<String>("command")
+                .map(Into::into);
+            let auth_header = api_service.get_auth_header();
+
+            let (ws_url, stream_url) =
+                if let Some(id) = stream_matches.get_one::<String>("id") {
+                    // Reconnect to an existing stream using its ID.
+                    let ws = api_service.get_stream_ws_url(id);
+                    // Derive the viewer URL: wss://host/ws/S/<id> -> https://host/s/<id>
+                    let viewer = ws
+                        .replace("wss://", "https://")
+                        .replace("ws://", "http://")
+                        .replace("/ws/S/", "/s/");
+                    (ws, viewer)
+                } else {
+                    // Create a fresh stream on the server.
+                    // Read the current terminal size to inform the server.
+                    #[cfg(windows)]
+                    let (cols, rows) = {
+                        crate::terminal::WindowsTerminal::console_size()
+                            .unwrap_or((80u16, 24u16))
+                    };
+                    #[cfg(not(windows))]
+                    let (cols, rows) = (80u16, 24u16);
+
+                    match api_service.create_stream(cols, rows) {
+                        Some(info) => (info.ws_producer_url, info.url),
+                        None => {
+                            eprintln!(
+                                "Failed to create stream. \
+                                Is the server reachable and are you authenticated?"
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                };
+
+            let mut stream = Stream::new(ws_url, stream_url, auth_header, command);
+            stream.execute();
         }
         _ => unreachable!(),
     }
