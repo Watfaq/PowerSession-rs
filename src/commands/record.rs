@@ -33,6 +33,7 @@ pub struct Record {
     filename: String,
     env: HashMap<String, String>,
     command: String,
+    stdin: bool,
     #[cfg(windows)]
     terminal: WindowsTerminal,
 }
@@ -43,6 +44,7 @@ impl Record {
         env: Option<HashMap<String, String>>,
         command: Option<String>,
         overwrite: bool,
+        stdin: bool,
     ) -> Self {
         if Path::new(&filename).exists() {
             println!("session with name `{}` exists", filename);
@@ -61,6 +63,7 @@ impl Record {
             env: env.unwrap_or_default(),
             command: command
                 .unwrap_or_else(|| env::var("SHELL").unwrap_or("powershell.exe".to_owned())),
+            stdin,
             #[cfg(windows)]
             terminal: WindowsTerminal::new(None),
         }
@@ -126,6 +129,9 @@ impl Record {
                 .0 as isize
         };
 
+        let record_stdin = self.stdin;
+        let stdin_output_writer = self.output_writer.clone();
+
         thread::spawn(move || {
             loop {
                 let mut buf = [0u8; 10];
@@ -159,6 +165,27 @@ impl Record {
                         _ => panic!("pty stdin closed"),
                     }
                 };
+
+                if record_stdin {
+                    if let Ok(chars) = std::str::from_utf8(&buf[..n]) {
+                        let now = SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .expect("check your machine time");
+                        let ts = now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9
+                            - record_start_time;
+                        let data = vec![
+                            LineItem::F64(ts),
+                            LineItem::String("i".to_string()),
+                            LineItem::String(chars.to_string()),
+                        ];
+                        let line = serde_json::to_string(&data).unwrap() + "\n";
+                        stdin_output_writer
+                            .lock()
+                            .unwrap()
+                            .write_all(line.as_bytes())
+                            .unwrap();
+                    }
+                }
 
                 stdin_tx.send((buf.to_vec(), n)).unwrap();
             }

@@ -18,6 +18,7 @@ use windows::Win32::{
 };
 
 use crate::commands::types::LineItem;
+#[cfg(windows)]
 use crate::terminal::{Terminal, WindowsTerminal};
 
 pub struct Stream {
@@ -42,6 +43,7 @@ impl Stream {
             auth_header,
             command: command
                 .unwrap_or_else(|| env::var("SHELL").unwrap_or("powershell.exe".to_owned())),
+            #[cfg(windows)]
             terminal: WindowsTerminal::new(None),
         }
     }
@@ -86,7 +88,10 @@ impl Stream {
 
         {
             // Send an asciicast-compatible reset event so the server knows the terminal size.
+            #[cfg(windows)]
             let reset_data = format!("{}x{}", self.terminal.width, self.terminal.height);
+            #[cfg(not(windows))]
+            let reset_data = "80x24".to_string();
             let reset_event = serde_json::to_string(&[
                 LineItem::F64(0.0),
                 LineItem::String("r".to_string()),
@@ -256,8 +261,18 @@ impl Stream {
             }
         });
 
-        self.terminal.attach_stdin(stdin_rx);
-        self.terminal.attach_stdout(stdout_tx);
-        self.terminal.run(&self.command).unwrap();
+        #[cfg(windows)]
+        {
+            self.terminal.attach_stdin(stdin_rx);
+            self.terminal.attach_stdout(stdout_tx);
+            self.terminal.run(&self.command).unwrap();
+        }
+        #[cfg(not(windows))]
+        {
+            drop(stdin_rx);
+            drop(stdout_tx);
+            eprintln!("error: streaming is only supported on Windows");
+            std::process::exit(1);
+        }
     }
 }
