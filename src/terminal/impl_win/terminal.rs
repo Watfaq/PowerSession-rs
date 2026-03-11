@@ -61,6 +61,10 @@ impl WindowsTerminal {
         }
     }
 
+    pub fn console_size() -> Option<(u16, u16)> {
+        unsafe { WindowsTerminal::get_console_size().ok().map(|(x, y)| (x as u16, y as u16)) }
+    }
+
     fn create_pseudo_console_and_pipes(
         handle: &mut HPCON,
         stdin: &mut HANDLE,  // the stdin to write input to PTY

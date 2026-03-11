@@ -28,7 +28,9 @@ uuid = { version = "1.22.0", features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
 
-reqwest = { version = "0.13", features = ["blocking", "multipart"] }
+reqwest = { version = "0.13", features = ["blocking", "multipart", "json"] }
+
+tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 
 rustc_version_runtime = "0.3.0"
 os_info = "3"
