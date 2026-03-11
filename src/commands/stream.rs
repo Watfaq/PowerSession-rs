@@ -1,13 +1,18 @@
+use std::env;
+
+#[cfg(windows)]
 use std::{
-    env,
     io::ErrorKind,
     sync::{mpsc::channel, Arc, Mutex},
     thread,
     time::{Duration, SystemTime},
 };
 
+#[cfg(windows)]
 use log::{error, trace};
+#[cfg(windows)]
 use tungstenite::stream::MaybeTlsStream;
+#[cfg(windows)]
 use tungstenite::Message;
 
 #[cfg(windows)]
@@ -17,6 +22,7 @@ use windows::Win32::{
     System::Console::{GetStdHandle, WriteConsoleW, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE},
 };
 
+#[cfg(windows)]
 use crate::commands::types::LineItem;
 #[cfg(windows)]
 use crate::terminal::{Terminal, WindowsTerminal};
@@ -49,11 +55,20 @@ impl Stream {
     }
 
     pub fn execute(&mut self) {
-        println!("Streaming. Watch at: {}", self.stream_url);
-        println!("Exit the shell/command to stop streaming.");
-        self.stream();
+        #[cfg(not(windows))]
+        {
+            eprintln!("error: streaming is only supported on Windows");
+            std::process::exit(1);
+        }
+        #[cfg(windows)]
+        {
+            println!("Streaming. Watch at: {}", self.stream_url);
+            println!("Exit the shell/command to stop streaming.");
+            self.stream();
+        }
     }
 
+    #[cfg(windows)]
     fn stream(&mut self) {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -88,10 +103,7 @@ impl Stream {
 
         {
             // Send an asciicast-compatible reset event so the server knows the terminal size.
-            #[cfg(windows)]
             let reset_data = format!("{}x{}", self.terminal.width, self.terminal.height);
-            #[cfg(not(windows))]
-            let reset_data = "80x24".to_string();
             let reset_event = serde_json::to_string(&[
                 LineItem::F64(0.0),
                 LineItem::String("r".to_string()),
@@ -141,7 +153,6 @@ impl Stream {
         let (stdout_tx, stdout_rx) = channel::<(Vec<u8>, usize)>();
 
         // On Windows, use ReadFile directly to preserve ESC sequences (same as record.rs).
-        #[cfg(windows)]
         let stdin_handle: isize = unsafe {
             GetStdHandle(STD_INPUT_HANDLE)
                 .expect("failed to get Windows stdin handle (STD_INPUT_HANDLE)")
@@ -151,7 +162,6 @@ impl Stream {
         thread::spawn(move || loop {
             let mut buf = [0u8; 10];
 
-            #[cfg(windows)]
             let n = {
                 let mut n_read: u32 = 0;
                 let ok = unsafe {
@@ -172,22 +182,12 @@ impl Stream {
                 n_read as usize
             };
 
-            #[cfg(not(windows))]
-            let n = {
-                use std::io::Read;
-                match std::io::stdin().lock().read(&mut buf) {
-                    Ok(n) if n > 0 => n,
-                    _ => panic!("pty stdin closed"),
-                }
-            };
-
             stdin_tx.send((buf.to_vec(), n)).unwrap();
         });
 
         // Stdout thread: read pty output, display it locally, and forward it to the WebSocket.
         let ws_writer = ws.clone();
         thread::spawn(move || {
-            #[cfg(windows)]
             let stdout_handle: HANDLE = unsafe {
                 GetStdHandle(STD_OUTPUT_HANDLE).expect("failed to get stdout handle")
             };
@@ -242,7 +242,6 @@ impl Stream {
                             }
 
                             // Echo output to the local console as well.
-                            #[cfg(windows)]
                             unsafe {
                                 let utf16: Vec<u16> = chars.encode_utf16().collect();
                                 WriteConsoleW(stdout_handle, &utf16, None, None)
@@ -261,18 +260,8 @@ impl Stream {
             }
         });
 
-        #[cfg(windows)]
-        {
-            self.terminal.attach_stdin(stdin_rx);
-            self.terminal.attach_stdout(stdout_tx);
-            self.terminal.run(&self.command).unwrap();
-        }
-        #[cfg(not(windows))]
-        {
-            drop(stdin_rx);
-            drop(stdout_tx);
-            eprintln!("error: streaming is only supported on Windows");
-            std::process::exit(1);
-        }
+        self.terminal.attach_stdin(stdin_rx);
+        self.terminal.attach_stdout(stdout_tx);
+        self.terminal.run(&self.command).unwrap();
     }
 }
