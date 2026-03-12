@@ -631,7 +631,6 @@ mod tests {
         // Must have waited at least ~50 ms for the resume signal.
         assert!(elapsed >= Duration::from_millis(30));
     }
-    }
 
     #[test]
     fn test_is_url() {
