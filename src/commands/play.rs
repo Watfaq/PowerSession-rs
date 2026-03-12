@@ -124,7 +124,6 @@ impl Iterator for StdoutIter {
             }
         }
     }
-    }
 }
 
 struct StdoutRelativeTimeIter(StdoutIter, f64);
