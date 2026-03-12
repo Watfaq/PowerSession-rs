@@ -1,0 +1,6 @@
+{"version":2,"width":120,"height":30,"timestamp":1654106076,"env":{"SHELL":"powershell.exe","TERM":"ms-terminal"}}
+[0.1,"o","hello"]
+[0.2,"i","h"]
+[0.3,"o"," world"]
+[0.4,"i","e"]
+[0.5,"o","!\r\n"]

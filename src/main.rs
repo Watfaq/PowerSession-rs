@@ -63,6 +63,12 @@ fn main() {
                         .num_args(0)
                         .short('f')
                         .long("force"),
+                )
+                .arg(
+                    Arg::new("stdin")
+                        .help("Enable stdin (keyboard input) recording")
+                        .num_args(0)
+                        .long("stdin"),
                 ),
         )
         .subcommand(
@@ -192,6 +198,7 @@ fn main() {
                 None,
                 rec_matches.get_one::<String>("command").map(Into::into),
                 rec_matches.contains_id("force"),
+                rec_matches.get_flag("stdin"),
             );
             record.execute();
         }

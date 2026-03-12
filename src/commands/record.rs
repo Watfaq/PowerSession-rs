@@ -33,6 +33,7 @@ pub struct Record {
     filename: String,
     env: HashMap<String, String>,
     command: String,
+    stdin: bool,
     #[cfg(windows)]
     terminal: WindowsTerminal,
 }
@@ -43,6 +44,7 @@ impl Record {
         env: Option<HashMap<String, String>>,
         command: Option<String>,
         overwrite: bool,
+        stdin: bool,
     ) -> Self {
         if Path::new(&filename).exists() {
             println!("session with name `{}` exists", filename);
@@ -61,6 +63,7 @@ impl Record {
             env: env.unwrap_or_default(),
             command: command
                 .unwrap_or_else(|| env::var("SHELL").unwrap_or("powershell.exe".to_owned())),
+            stdin,
             #[cfg(windows)]
             terminal: WindowsTerminal::new(None),
         }
@@ -106,11 +109,19 @@ impl Record {
         self.output_writer
             .lock()
             .unwrap()
-            .write((serde_json::to_string(&header).unwrap() + "\n").as_bytes())
+            .write_all((serde_json::to_string(&header).unwrap() + "\n").as_bytes())
             .unwrap();
 
         let (stdin_tx, stdin_rx) = channel::<(Vec<u8>, usize)>();
         let (stdout_tx, stdout_rx) = channel::<(Vec<u8>, usize)>();
+
+        // Single channel for cast-file events.  Both the stdin and stdout threads
+        // forward pre-formatted JSON lines here.  A dedicated writer thread drains
+        // the channel and writes to the file, ensuring serialised, in-arrival-order
+        // writes without competing mutex acquisitions between threads.
+        //   Some(line) – write this line to the cast file
+        //   None       – stdout closed; recording is done
+        let (event_tx, event_rx) = channel::<Option<String>>();
 
         // On Windows, use ReadFile directly on the stdin handle instead of
         // std::io::stdin() (which uses ReadConsoleW internally). When raw mode is
@@ -126,7 +137,14 @@ impl Record {
                 .0 as isize
         };
 
+        let record_stdin = self.stdin;
+        let stdin_event_tx = event_tx.clone();
+
         thread::spawn(move || {
+            // Buffer for incomplete UTF-8 sequences split across read boundaries,
+            // mirroring the pending_bytes approach used in the stdout thread.
+            let mut pending_bytes: Vec<u8> = Vec::new();
+
             loop {
                 let mut buf = [0u8; 10];
 
@@ -160,11 +178,44 @@ impl Record {
                     }
                 };
 
+                if record_stdin {
+                    pending_bytes.extend_from_slice(&buf[..n]);
+
+                    let valid_up_to = match std::str::from_utf8(&pending_bytes) {
+                        Ok(_) => pending_bytes.len(),
+                        Err(e) => e.valid_up_to(),
+                    };
+
+                    if valid_up_to > 0 {
+                        let chars =
+                            std::str::from_utf8(&pending_bytes[..valid_up_to]).unwrap();
+                        let now = SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .expect("check your machine time");
+                        let ts = now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9
+                            - record_start_time;
+                        let data = vec![
+                            LineItem::F64(ts),
+                            LineItem::String("i".to_string()),
+                            LineItem::String(chars.to_string()),
+                        ];
+                        let line = serde_json::to_string(&data).unwrap() + "\n";
+                        // .ok(): if the writer thread has already exited (session
+                        // ended) we simply discard the event.
+                        stdin_event_tx.send(Some(line)).ok();
+                        pending_bytes.drain(..valid_up_to);
+                    } else {
+                        trace!("stdin: buffering incomplete UTF-8 sequence");
+                    }
+                }
+
                 stdin_tx.send((buf.to_vec(), n)).unwrap();
             }
         });
 
-        let output_writer = self.output_writer.clone();
+        // The stdout thread owns the remaining (non-cloned) event_tx so that the
+        // writer thread's channel is closed when this thread exits.
+        let stdout_event_tx = event_tx;
         let filename = self.filename.clone();
 
         thread::spawn(move || {
@@ -184,6 +235,8 @@ impl Record {
                         if len == 0 {
                             trace!("stdout received close indicator");
                             println!("Record finished. Result saved to file {}", filename);
+                            // Signal the writer thread that recording is done.
+                            stdout_event_tx.send(None).ok();
                             break;
                         }
 
@@ -206,7 +259,8 @@ impl Record {
                         // Only process complete UTF-8 sequences
                         if valid_up_to > 0 {
                             // Safe: we just validated these bytes are valid UTF-8
-                            let chars = std::str::from_utf8(&pending_bytes[..valid_up_to]).unwrap();
+                            let chars =
+                                std::str::from_utf8(&pending_bytes[..valid_up_to]).unwrap();
 
                             // https://github.com/asciinema/asciinema/blob/5a385765f050e04523c9d74fbf98d5afaa2deff0/asciinema/asciicast/v2.py#L119
                             let data = vec![
@@ -215,11 +269,7 @@ impl Record {
                                 LineItem::String(chars.to_string()),
                             ];
                             let line = serde_json::to_string(&data).unwrap() + "\n";
-                            output_writer
-                                .lock()
-                                .unwrap()
-                                .write(line.as_bytes())
-                                .unwrap();
+                            stdout_event_tx.send(Some(line)).ok();
 
                             // Write to console using WriteConsoleW for proper Unicode support
                             #[cfg(windows)]
@@ -238,6 +288,25 @@ impl Record {
                         error!("reading stdout: {}", err.to_string());
                         break;
                     }
+                }
+            }
+        });
+
+        // Dedicated writer thread: drains the event channel and writes lines to the
+        // cast file in arrival order, eliminating races between the stdin/stdout threads.
+        let output_writer = self.output_writer.clone();
+        thread::spawn(move || {
+            loop {
+                match event_rx.recv() {
+                    Ok(Some(line)) => {
+                        output_writer
+                            .lock()
+                            .expect("failed to acquire output writer lock")
+                            .write_all(line.as_bytes())
+                            .expect("failed to write event to cast file");
+                    }
+                    // None = done signal from stdout thread; Err = channel closed.
+                    Ok(None) | Err(_) => break,
                 }
             }
         });

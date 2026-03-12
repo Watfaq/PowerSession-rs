@@ -59,58 +59,69 @@ impl Iterator for StdoutIter {
     type Item = SessionLine;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match &mut self.0.line_iter {
-            SessionLineSource::Vec(iter) => iter.next(),
-            SessionLineSource::Lines(iter) => loop {
-                let line = iter.next()?;
-                let content = match line {
-                    Ok(l) => l,
-                    Err(e) => {
-                        eprintln!("error reading session data: {}", e);
-                        exit(1);
-                    }
-                };
-                // Skip empty or whitespace-only lines (e.g. trailing newlines in files)
-                if content.trim().is_empty() {
-                    continue;
-                }
-                let line_data: Vec<LineItem> = match serde_json::from_str(&content) {
-                    Ok(data) => data,
-                    Err(e) => {
-                        eprintln!("corrupt record data: {}", e);
-                        exit(1);
-                    }
-                };
-                if line_data.len() != 3 {
-                    eprintln!("corrupt record: expected 3 fields, got {}", line_data.len());
-                    exit(1);
-                }
+        loop {
+            let event = match &mut self.0.line_iter {
+                SessionLineSource::Vec(iter) => iter.next(),
+                SessionLineSource::Lines(iter) => loop {
+                    let line = iter.next()?;
+                    let content = match line {
+                        Ok(l) => l,
+                        Err(e) => {
+                            eprintln!("error reading session data: {}", e);
+                            exit(1);
+                        }
+                    };
 
-                let session_line = SessionLine {
-                    timestamp: match &line_data[0] {
-                        LineItem::F64(ts) => ts.clone(),
-                        _ => {
-                            eprintln!("corrupt record: expected timestamp as number");
+                    // Skip empty or whitespace-only lines (e.g. trailing newlines in files)
+                    if content.trim().is_empty() {
+                        continue;
+                    }
+
+                    let line_data: Vec<LineItem> = match serde_json::from_str(&content) {
+                        Ok(data) => data,
+                        Err(e) => {
+                            eprintln!("corrupt record data: {}", e);
                             exit(1);
                         }
-                    },
-                    stdout: match &line_data[1] {
-                        LineItem::String(flag) => flag == "o",
-                        _ => {
-                            eprintln!("corrupt record: expected event type as string");
-                            exit(1);
-                        }
-                    },
-                    content: match &line_data[2] {
-                        LineItem::String(line) => line.clone(),
-                        _ => {
-                            eprintln!("corrupt record: expected content as string");
-                            exit(1);
-                        }
-                    },
-                };
-                return Some(session_line);
-            },
+                    };
+                    if line_data.len() != 3 {
+                        eprintln!("corrupt record: expected 3 fields, got {}", line_data.len());
+                        exit(1);
+                    }
+
+                    let session_line = SessionLine {
+                        timestamp: match &line_data[0] {
+                            LineItem::F64(ts) => ts.clone(),
+                            _ => {
+                                eprintln!("corrupt record: expected timestamp as number");
+                                exit(1);
+                            }
+                        },
+                        stdout: match &line_data[1] {
+                            LineItem::String(flag) => flag == "o",
+                            _ => {
+                                eprintln!("corrupt record: expected event type as string");
+                                exit(1);
+                            }
+                        },
+                        content: match &line_data[2] {
+                            LineItem::String(line) => line.clone(),
+                            _ => {
+                                eprintln!("corrupt record: expected content as string");
+                                exit(1);
+                            }
+                        },
+                    };
+                    break Some(session_line);
+                },
+            };
+
+            match event {
+                // Only yield output ("o") events; skip input ("i") and any other event types.
+                Some(line) if line.stdout => return Some(line),
+                Some(_) => continue,
+                None => return None,
+            }
         }
     }
 }
@@ -514,6 +525,12 @@ mod tests {
         d.as_path().to_str().unwrap().to_owned()
     }
 
+    fn test_data_with_stdin_path() -> String {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("testdata/play_with_stdin.txt");
+        d.as_path().to_str().unwrap().to_owned()
+    }
+
     #[test]
     fn test_play() {
         let play = Play::new(test_data_path(), None, 1.0);
@@ -553,6 +570,22 @@ mod tests {
     #[test]
     fn test_play_v1_format_with_idle_time_limit() {
         let play = Play::new(test_data_v1_path(), Some(0.5), 1.0);
+        play.execute();
+    }
+
+    /// Playback of a cast that contains "i" (stdin) events alongside "o" (stdout)
+    /// events should silently skip the input events and only render output events.
+    #[test]
+    fn test_play_skips_stdin_events() {
+        let play = Play::new(test_data_with_stdin_path(), None, 1.0);
+        play.execute();
+    }
+
+    /// Timing deltas must be computed only between consecutive "o" events, not
+    /// relative to interleaved "i" events.
+    #[test]
+    fn test_play_stdin_events_do_not_affect_timing() {
+        let play = Play::new(test_data_with_stdin_path(), Some(0.5), 2.0);
         play.execute();
     }
 

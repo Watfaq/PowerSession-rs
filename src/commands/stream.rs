@@ -1,13 +1,18 @@
+use std::env;
+
+#[cfg(windows)]
 use std::{
-    env,
     io::ErrorKind,
     sync::{mpsc::channel, Arc, Mutex},
     thread,
     time::{Duration, SystemTime},
 };
 
+#[cfg(windows)]
 use log::{error, trace};
+#[cfg(windows)]
 use tungstenite::stream::MaybeTlsStream;
+#[cfg(windows)]
 use tungstenite::Message;
 
 #[cfg(windows)]
@@ -17,7 +22,9 @@ use windows::Win32::{
     System::Console::{GetStdHandle, WriteConsoleW, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE},
 };
 
+#[cfg(windows)]
 use crate::commands::types::LineItem;
+#[cfg(windows)]
 use crate::terminal::{Terminal, WindowsTerminal};
 
 pub struct Stream {
@@ -42,16 +49,26 @@ impl Stream {
             auth_header,
             command: command
                 .unwrap_or_else(|| env::var("SHELL").unwrap_or("powershell.exe".to_owned())),
+            #[cfg(windows)]
             terminal: WindowsTerminal::new(None),
         }
     }
 
     pub fn execute(&mut self) {
-        println!("Streaming. Watch at: {}", self.stream_url);
-        println!("Exit the shell/command to stop streaming.");
-        self.stream();
+        #[cfg(not(windows))]
+        {
+            eprintln!("error: streaming is only supported on Windows");
+            std::process::exit(1);
+        }
+        #[cfg(windows)]
+        {
+            println!("Streaming. Watch at: {}", self.stream_url);
+            println!("Exit the shell/command to stop streaming.");
+            self.stream();
+        }
     }
 
+    #[cfg(windows)]
     fn stream(&mut self) {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -136,7 +153,6 @@ impl Stream {
         let (stdout_tx, stdout_rx) = channel::<(Vec<u8>, usize)>();
 
         // On Windows, use ReadFile directly to preserve ESC sequences (same as record.rs).
-        #[cfg(windows)]
         let stdin_handle: isize = unsafe {
             GetStdHandle(STD_INPUT_HANDLE)
                 .expect("failed to get Windows stdin handle (STD_INPUT_HANDLE)")
@@ -146,7 +162,6 @@ impl Stream {
         thread::spawn(move || loop {
             let mut buf = [0u8; 10];
 
-            #[cfg(windows)]
             let n = {
                 let mut n_read: u32 = 0;
                 let ok = unsafe {
@@ -167,22 +182,12 @@ impl Stream {
                 n_read as usize
             };
 
-            #[cfg(not(windows))]
-            let n = {
-                use std::io::Read;
-                match std::io::stdin().lock().read(&mut buf) {
-                    Ok(n) if n > 0 => n,
-                    _ => panic!("pty stdin closed"),
-                }
-            };
-
             stdin_tx.send((buf.to_vec(), n)).unwrap();
         });
 
         // Stdout thread: read pty output, display it locally, and forward it to the WebSocket.
         let ws_writer = ws.clone();
         thread::spawn(move || {
-            #[cfg(windows)]
             let stdout_handle: HANDLE = unsafe {
                 GetStdHandle(STD_OUTPUT_HANDLE).expect("failed to get stdout handle")
             };
@@ -237,7 +242,6 @@ impl Stream {
                             }
 
                             // Echo output to the local console as well.
-                            #[cfg(windows)]
                             unsafe {
                                 let utf16: Vec<u16> = chars.encode_utf16().collect();
                                 WriteConsoleW(stdout_handle, &utf16, None, None)
