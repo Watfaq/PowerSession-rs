@@ -109,7 +109,7 @@ impl Record {
         self.output_writer
             .lock()
             .unwrap()
-            .write((serde_json::to_string(&header).unwrap() + "\n").as_bytes())
+            .write_all((serde_json::to_string(&header).unwrap() + "\n").as_bytes())
             .unwrap();
 
         let (stdin_tx, stdin_rx) = channel::<(Vec<u8>, usize)>();
