@@ -50,7 +50,7 @@ jobs:
       - name: Display
         run: ls ./target/release/PowerSession.exe
       - name: Release
-        uses: softprops/action-gh-release@v2.5.0
+        uses: softprops/action-gh-release@v2.6.0
         with:
           files: ./target/release/PowerSession.exe
       - name: Publish to crates.io
