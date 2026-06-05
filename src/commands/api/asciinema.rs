@@ -24,6 +24,10 @@ struct Config {
 }
 
 impl Config {
+    fn new_config_notice() -> String {
+        "New config file created \nDefault instance will be used: https://asciinema.org \nTo set a custom server run: PowerSession.exe server <url>\n".to_string()
+    }
+
     fn get_config_file() -> (PathBuf, PathBuf) {
         let app_dirs = AppDirs::new(None, true).unwrap();
         let config_root = app_dirs.config_dir.join("PowerSession");
@@ -40,11 +44,7 @@ impl Config {
             c.location = config_file.to_str().unwrap().to_owned();
             c
         } else {
-            let text = format!(
-                "New config file created \nDefault instance will be used: https://asciinema.org \nTo set a custom server type: PowerSession.exe --server <hostname>\n"
-            );
-
-            println!("{}", text);
+            println!("{}", Self::new_config_notice());
             return Self::new(None);
         };
     }
@@ -314,5 +314,13 @@ mod tests {
 
         let expected = format!("Basic {}", BASE64_STANDARD.encode("user:token-123"));
         assert_eq!(asc.get_auth_header(), expected);
+    }
+
+    #[test]
+    fn test_new_config_notice_mentions_server_subcommand() {
+        let notice = Config::new_config_notice();
+
+        assert!(notice.contains("PowerSession.exe server <url>"));
+        assert!(!notice.contains("--server"));
     }
 }
