@@ -42,20 +42,40 @@ scoop install powersession-rs
 ### Get Help
 ```console
 PS D:\projects\PowerSession> PowerSession.exe -h
-PowerSession
+Usage: PowerSession [OPTIONS] <COMMAND>
 
-USAGE:
-    PowerSession.exe [SUBCOMMAND]
+Commands:
+  rec     Record and save a session
+  play    Play a recorded session
+  auth    Authentication with api server (default is asciinema.org)
+  upload  Upload a session to api server
+  server  The url of asciinema server
+  stream  Stream a live terminal session to the asciinema server
+  help    Print this message or the help of the given subcommand(s)
 
-OPTIONS:
-    -h, --help    Print help information
+Options:
+  -l, --log-level <log-level>  can be one of [error|warn|info|debug|trace] [default: error]
+  -h, --help                   Print help
+  -V, --version                Print version
+```
 
-SUBCOMMANDS:
-    rec       Record and save a session
-    play
-    auth      Authentication with asciinema.org
-    upload    Upload a session to ascinema.org
-    help      Print this message or the help of the given subcommand(s)
+### Record with a specific shell or startup arguments
+
+Use `-c` / `--command` to choose the shell explicitly and include any startup arguments you need.
+
+```console
+PowerSession.exe rec demo.cast --command "powershell.exe -NoLogo"
+PowerSession.exe rec demo.cast --command "pwsh.exe -NoLogo"
+```
+
+### Use a self-hosted asciinema server
+
+Set the server URL once, then authenticate and upload as usual. The configured server is reused for `auth`, `upload`, and `stream`.
+
+```console
+PowerSession.exe server https://asciinema.example.com
+PowerSession.exe auth
+PowerSession.exe upload demo.cast
 ```
 
 ## Credits
