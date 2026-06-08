@@ -1,4 +1,6 @@
-use crate::commands::types::{LineItem, RecordHeader, SessionLine, V1Recording};
+use crate::commands::types::{
+    LineItem, RecordHeader, RecordHeaderV2, RecordHeaderV3, SessionLine, V1Recording,
+};
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -19,8 +21,8 @@ use windows::Win32::{
     Foundation::HANDLE,
     Storage::FileSystem::ReadFile,
     System::Console::{
-        GetConsoleMode, GetStdHandle, SetConsoleMode, CONSOLE_MODE, ENABLE_ECHO_INPUT,
-        ENABLE_LINE_INPUT, STD_INPUT_HANDLE,
+        CONSOLE_MODE, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, GetConsoleMode, GetStdHandle,
+        STD_INPUT_HANDLE, SetConsoleMode,
     },
 };
 
@@ -53,9 +55,9 @@ struct Session {
     line_iter: SessionLineSource,
 }
 
-struct StdoutIter(Session);
+struct LineIter(Session);
 
-impl Iterator for StdoutIter {
+impl Iterator for LineIter {
     type Item = SessionLine;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -115,20 +117,14 @@ impl Iterator for StdoutIter {
                     break Some(session_line);
                 },
             };
-
-            match event {
-                // Only yield output ("o") events; skip input ("i") and any other event types.
-                Some(line) if line.stdout => return Some(line),
-                Some(_) => continue,
-                None => return None,
-            }
+            return event;
         }
     }
 }
 
-struct StdoutRelativeTimeIter(StdoutIter, f64);
+struct RelativeTimeIter(LineIter, f64);
 
-impl Iterator for StdoutRelativeTimeIter {
+impl Iterator for RelativeTimeIter {
     type Item = SessionLine;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -136,9 +132,12 @@ impl Iterator for StdoutRelativeTimeIter {
 
         self.0.next().map(|line| {
             let rv = SessionLine {
-                timestamp: match prev_timestamp {
-                    x if x == 0.0 => 0.0, // first line, start right away
-                    _ => line.timestamp - prev_timestamp,
+                timestamp: match self.0.0.header {
+                    RecordHeader::V2(_) => match prev_timestamp {
+                        x if x == 0.0 => 0.0, // first line, start right away
+                        _ => line.timestamp - prev_timestamp,
+                    },
+                    RecordHeader::V3(_) => line.timestamp,
                 },
                 content: line.content,
                 stdout: line.stdout,
@@ -208,18 +207,38 @@ fn parse_reader(reader: Box<dyn BufRead>, source_name: &str) -> Session {
             exit(1);
         }
     };
-
-    if let Ok(header) = serde_json::from_str::<RecordHeader>(&first_line) {
+    if let Ok(header) = serde_json::from_str::<RecordHeaderV2>(&first_line) {
         // v2 format: header on first line, events stream on subsequent lines.
         // Validate version == 2 to avoid misclassifying v1 recordings that
         // happen to contain a timestamp field parseable as RecordHeader.
         if header.version == 2 {
             Session {
-                header,
+                header: RecordHeader::V2(header),
                 line_iter: SessionLineSource::Lines(line_iter),
             }
         } else {
             // Not v2 — fall through and try v1 parsing with the full content.
+            let mut file_content = first_line;
+            for line in line_iter {
+                file_content.push('\n');
+                match line {
+                    Ok(l) => file_content.push_str(&l),
+                    Err(e) => {
+                        eprintln!("error reading '{}': {}", source_name, e);
+                        exit(1);
+                    }
+                }
+            }
+            parse_v1(source_name, file_content)
+        }
+    } else if let Ok(header) = serde_json::from_str::<RecordHeaderV3>(&first_line) {
+        if header.version == 3 {
+            Session {
+                header: RecordHeader::V3(header),
+                line_iter: SessionLineSource::Lines(line_iter),
+            }
+        } else {
+            // Not v3 — fall through and try v1 parsing with the full content.
             let mut file_content = first_line;
             for line in line_iter {
                 file_content.push('\n');
@@ -254,7 +273,7 @@ fn parse_reader(reader: Box<dyn BufRead>, source_name: &str) -> Session {
 fn parse_v1(source_name: &str, file_content: String) -> Session {
     match serde_json::from_str::<V1Recording>(&file_content) {
         Ok(recording) if recording.version == 1 => {
-            let header = RecordHeader {
+            let header = RecordHeaderV2 {
                 version: recording.version,
                 width: recording.width,
                 height: recording.height,
@@ -277,7 +296,7 @@ fn parse_v1(source_name: &str, file_content: String) -> Session {
                 .collect();
 
             Session {
-                header,
+                header: RecordHeader::V2(header),
                 line_iter: SessionLineSource::Vec(events.into_iter()),
             }
         }
@@ -300,7 +319,11 @@ fn parse_v1(source_name: &str, file_content: String) -> Session {
 
 impl Session {
     fn new(source: &str) -> Self {
-        if is_url(source) { Self::from_url(source) } else { Self::from_file(source) }
+        if is_url(source) {
+            Self::from_url(source)
+        } else {
+            Self::from_file(source)
+        }
     }
 
     fn from_file(filename: &str) -> Self {
@@ -334,12 +357,12 @@ impl Session {
         parse_reader(Box::new(io::BufReader::new(response)), &url)
     }
 
-    fn stdout_iter(self) -> StdoutIter {
-        StdoutIter(self)
+    fn iter(self) -> LineIter {
+        LineIter(self)
     }
 
-    fn stdout_relative_time_iter(self) -> StdoutRelativeTimeIter {
-        StdoutRelativeTimeIter(self.stdout_iter(), 0.0)
+    fn relative_time_iter(self) -> RelativeTimeIter {
+        RelativeTimeIter(self.iter(), 0.0)
     }
 }
 
@@ -412,7 +435,10 @@ impl Play {
                         raw &= !ENABLE_LINE_INPUT;
                         raw &= !ENABLE_ECHO_INPUT;
                         if let Err(e) = SetConsoleMode(h, raw) {
-                            warn!("pause: failed to set console mode: {:?}; space-to-pause is disabled", e);
+                            warn!(
+                                "pause: failed to set console mode: {:?}; space-to-pause is disabled",
+                                e
+                            );
                             None
                         } else {
                             Some(ConsoleGuard {
@@ -436,26 +462,24 @@ impl Play {
         // Only spawn the thread when pause support is actually enabled.
         #[cfg(windows)]
         if _console_guard.is_some() {
-            thread::spawn(move || {
-                unsafe {
-                    let stdin_handle = match GetStdHandle(STD_INPUT_HANDLE) {
-                        Ok(h) if !h.is_invalid() => h,
-                        _ => return,
-                    };
-                    loop {
-                        let mut buf = [0u8; 1];
-                        let mut n_read: u32 = 0;
-                        if ReadFile(stdin_handle, Some(&mut buf), Some(&mut n_read), None).is_err()
-                            || n_read == 0
-                        {
-                            break;
-                        }
-                        if buf[0] == b' ' {
-                            let (lock, cvar) = &*pair_clone;
-                            let mut paused = lock.lock().unwrap();
-                            *paused = !*paused;
-                            cvar.notify_all();
-                        }
+            thread::spawn(move || unsafe {
+                let stdin_handle = match GetStdHandle(STD_INPUT_HANDLE) {
+                    Ok(h) if !h.is_invalid() => h,
+                    _ => return,
+                };
+                loop {
+                    let mut buf = [0u8; 1];
+                    let mut n_read: u32 = 0;
+                    if ReadFile(stdin_handle, Some(&mut buf), Some(&mut n_read), None).is_err()
+                        || n_read == 0
+                    {
+                        break;
+                    }
+                    if buf[0] == b' ' {
+                        let (lock, cvar) = &*pair_clone;
+                        let mut paused = lock.lock().unwrap();
+                        *paused = !*paused;
+                        cvar.notify_all();
                     }
                 }
             });
@@ -485,19 +509,23 @@ impl Play {
                 });
             }
         }
-
-        for stdout_item in self.session.stdout_relative_time_iter() {
-            let mut delay = stdout_item.timestamp;
-            if let Some(limit) = self.idle_time_limit {
-                delay = delay.min(limit);
-            }
+        let limit = self
+            .idle_time_limit
+            .unwrap_or(f64::INFINITY)
+            .min(match self.session.header {
+                RecordHeader::V3(ref header) => header.idle_time_limit.unwrap_or(f64::INFINITY),
+                _ => f64::INFINITY,
+            });
+        for item in self.session.relative_time_iter() {
+            let mut delay = item.timestamp.min(limit);
             delay /= self.speed;
 
             wait_interruptible(&pair, delay);
+            if !item.stdout {
+                continue;
+            }
 
-            io::stdout()
-                .write_all(stdout_item.content.as_bytes())
-                .unwrap();
+            io::stdout().write_all(item.content.as_bytes()).unwrap();
             io::stdout().flush().unwrap();
         }
         // Console mode is automatically restored by the ConsoleGuard's Drop impl
