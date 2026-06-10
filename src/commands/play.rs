@@ -512,8 +512,8 @@ impl Play {
         let limit = self
             .idle_time_limit
             .unwrap_or(f64::INFINITY)
-            .min(match self.session.header {
-                RecordHeader::V3(ref header) => header.idle_time_limit.unwrap_or(f64::INFINITY),
+            .min(match &self.session.header {
+                RecordHeader::V3(header) => header.idle_time_limit.unwrap_or(f64::INFINITY),
                 _ => f64::INFINITY,
             });
         for item in self.session.relative_time_iter() {
