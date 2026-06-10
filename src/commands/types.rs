@@ -35,7 +35,7 @@ pub(crate) struct RecordHeaderV3 {
     pub(crate) timestamp: Option<u64>,
     pub(crate) term: RecordHeaderV3Term,
     pub(crate) title: Option<String>,
-    #[serde(rename = "env")]
+    #[serde(rename = "env", default)]
     pub(crate) environment: HashMap<String, String>,
     pub(crate) command: Option<String>,
     pub(crate) idle_time_limit: Option<f64>,

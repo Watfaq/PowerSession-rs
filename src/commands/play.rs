@@ -132,7 +132,7 @@ impl Iterator for RelativeTimeIter {
 
         self.0.next().map(|line| {
             let rv = SessionLine {
-                timestamp: match self.0.0.header {
+                timestamp: match &self.0.0.header {
                     RecordHeader::V2(_) => match prev_timestamp {
                         x if x == 0.0 => 0.0, // first line, start right away
                         _ => line.timestamp - prev_timestamp,
@@ -553,6 +553,12 @@ mod tests {
         d.as_path().to_str().unwrap().to_owned()
     }
 
+    fn test_data_v3_path() -> String {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("testdata/play_v3.cast");
+        d.as_path().to_str().unwrap().to_owned()
+    }
+
     fn test_data_with_stdin_path() -> String {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("testdata/play_with_stdin.txt");
@@ -562,6 +568,12 @@ mod tests {
     #[test]
     fn test_play() {
         let play = Play::new(test_data_path(), None, 1.0);
+        play.execute();
+    }
+
+    #[test]
+    fn test_play_v3() {
+        let play = Play::new(test_data_v3_path(), None, 1.0);
         play.execute();
     }
 
