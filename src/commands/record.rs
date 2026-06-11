@@ -15,7 +15,7 @@ use windows::Win32::{
 };
 
 use crate::commands::types::LineItem;
-use crate::commands::types::RecordHeaderV2;
+use crate::commands::types::RecordHeader;
 #[cfg(windows)]
 use crate::terminal::Terminal;
 #[cfg(windows)]
@@ -85,7 +85,7 @@ impl Record {
 
         let record_start_time = now.as_secs() as f64 + now.subsec_nanos() as f64 * 1e-9;
 
-        let header = RecordHeaderV2 {
+        let header = RecordHeader {
             version: 2,
             #[cfg(windows)]
             width: self.terminal.width,

@@ -1,8 +1,5 @@
-use crate::commands::types::{
-    LineItem, RecordHeader, RecordHeaderV2, RecordHeaderV3, SessionLine, V1Recording,
-};
+use crate::commands::types::{LineItem, SessionLine, V1Recording};
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, Write};
@@ -49,9 +46,14 @@ enum SessionLineSource {
     Vec(std::vec::IntoIter<SessionLine>),
 }
 
+/// The few header fields playback actually consumes, normalized across
+/// asciicast versions at parse time so the rest of the player is
+/// version-agnostic.
 struct Session {
-    #[allow(dead_code)]
-    header: RecordHeader,
+    /// Whether event timestamps are deltas (v1, v3) or absolute (v2).
+    relative_timestamps: bool,
+    /// Default idle time limit declared in the recording header, if any.
+    idle_time_limit: Option<f64>,
     line_iter: SessionLineSource,
 }
 
@@ -61,63 +63,60 @@ impl Iterator for LineIter {
     type Item = SessionLine;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let event = match &mut self.0.line_iter {
-                SessionLineSource::Vec(iter) => iter.next(),
-                SessionLineSource::Lines(iter) => loop {
-                    let line = iter.next()?;
-                    let content = match line {
-                        Ok(l) => l,
-                        Err(e) => {
-                            eprintln!("error reading session data: {}", e);
-                            exit(1);
-                        }
-                    };
-
-                    // Skip empty or whitespace-only lines (e.g. trailing newlines in files)
-                    if content.trim().is_empty() {
-                        continue;
-                    }
-
-                    let line_data: Vec<LineItem> = match serde_json::from_str(&content) {
-                        Ok(data) => data,
-                        Err(e) => {
-                            eprintln!("corrupt record data: {}", e);
-                            exit(1);
-                        }
-                    };
-                    if line_data.len() != 3 {
-                        eprintln!("corrupt record: expected 3 fields, got {}", line_data.len());
+        match &mut self.0.line_iter {
+            SessionLineSource::Vec(iter) => iter.next(),
+            SessionLineSource::Lines(iter) => loop {
+                let line = iter.next()?;
+                let content = match line {
+                    Ok(l) => l,
+                    Err(e) => {
+                        eprintln!("error reading session data: {}", e);
                         exit(1);
                     }
+                };
 
-                    let session_line = SessionLine {
-                        timestamp: match &line_data[0] {
-                            LineItem::F64(ts) => ts.clone(),
-                            _ => {
-                                eprintln!("corrupt record: expected timestamp as number");
-                                exit(1);
-                            }
-                        },
-                        stdout: match &line_data[1] {
-                            LineItem::String(flag) => flag == "o",
-                            _ => {
-                                eprintln!("corrupt record: expected event type as string");
-                                exit(1);
-                            }
-                        },
-                        content: match &line_data[2] {
-                            LineItem::String(line) => line.clone(),
-                            _ => {
-                                eprintln!("corrupt record: expected content as string");
-                                exit(1);
-                            }
-                        },
-                    };
-                    break Some(session_line);
-                },
-            };
-            return event;
+                // Skip empty or whitespace-only lines (e.g. trailing newlines in files)
+                if content.trim().is_empty() {
+                    continue;
+                }
+
+                let line_data: Vec<LineItem> = match serde_json::from_str(&content) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        eprintln!("corrupt record data: {}", e);
+                        exit(1);
+                    }
+                };
+                if line_data.len() != 3 {
+                    eprintln!("corrupt record: expected 3 fields, got {}", line_data.len());
+                    exit(1);
+                }
+
+                let session_line = SessionLine {
+                    timestamp: match &line_data[0] {
+                        LineItem::F64(ts) => ts.clone(),
+                        _ => {
+                            eprintln!("corrupt record: expected timestamp as number");
+                            exit(1);
+                        }
+                    },
+                    stdout: match &line_data[1] {
+                        LineItem::String(flag) => flag == "o",
+                        _ => {
+                            eprintln!("corrupt record: expected event type as string");
+                            exit(1);
+                        }
+                    },
+                    content: match &line_data[2] {
+                        LineItem::String(line) => line.clone(),
+                        _ => {
+                            eprintln!("corrupt record: expected content as string");
+                            exit(1);
+                        }
+                    },
+                };
+                break Some(session_line);
+            },
         }
     }
 }
@@ -132,12 +131,13 @@ impl Iterator for RelativeTimeIter {
 
         self.0.next().map(|line| {
             let rv = SessionLine {
-                timestamp: match &self.0.0.header {
-                    RecordHeader::V2(_) => match prev_timestamp {
+                timestamp: if self.0.0.relative_timestamps {
+                    line.timestamp
+                } else {
+                    match prev_timestamp {
                         x if x == 0.0 => 0.0, // first line, start right away
                         _ => line.timestamp - prev_timestamp,
-                    },
-                    RecordHeader::V3(_) => line.timestamp,
+                    }
                 },
                 content: line.content,
                 stdout: line.stdout,
@@ -191,8 +191,17 @@ fn normalize_url(url: &str) -> String {
     }
 }
 
-/// Parse a session from a buffered reader, detecting v2 or v1 format automatically.
-/// The `source_name` is used only in error messages.
+/// The header fields playback consumes, shared by the v2 and v3 header
+/// schemas. serde ignores all other fields, so this also serves as the
+/// version probe for format detection.
+#[derive(serde::Deserialize)]
+struct HeaderProbe {
+    version: u8,
+    idle_time_limit: Option<f64>,
+}
+
+/// Parse a session from a buffered reader, detecting v3, v2 or v1 format
+/// automatically. The `source_name` is used only in error messages.
 fn parse_reader(reader: Box<dyn BufRead>, source_name: &str) -> Session {
     let mut line_iter: io::Lines<Box<dyn BufRead>> = reader.lines();
 
@@ -207,96 +216,54 @@ fn parse_reader(reader: Box<dyn BufRead>, source_name: &str) -> Session {
             exit(1);
         }
     };
-    if let Ok(header) = serde_json::from_str::<RecordHeaderV2>(&first_line) {
-        // v2 format: header on first line, events stream on subsequent lines.
-        // Validate version == 2 to avoid misclassifying v1 recordings that
-        // happen to contain a timestamp field parseable as RecordHeader.
-        if header.version == 2 {
-            Session {
-                header: RecordHeader::V2(header),
+
+    // v2/v3 format: header on first line, events stream on subsequent lines.
+    // v3 event timestamps are deltas; v2 timestamps are absolute.
+    // Anything else (including version 1) falls through to v1 parsing below.
+    if let Ok(header) = serde_json::from_str::<HeaderProbe>(&first_line) {
+        if header.version == 2 || header.version == 3 {
+            return Session {
+                relative_timestamps: header.version == 3,
+                idle_time_limit: header.idle_time_limit,
                 line_iter: SessionLineSource::Lines(line_iter),
-            }
-        } else {
-            // Not v2 — fall through and try v1 parsing with the full content.
-            let mut file_content = first_line;
-            for line in line_iter {
-                file_content.push('\n');
-                match line {
-                    Ok(l) => file_content.push_str(&l),
-                    Err(e) => {
-                        eprintln!("error reading '{}': {}", source_name, e);
-                        exit(1);
-                    }
-                }
-            }
-            parse_v1(source_name, file_content)
+            };
         }
-    } else if let Ok(header) = serde_json::from_str::<RecordHeaderV3>(&first_line) {
-        if header.version == 3 {
-            Session {
-                header: RecordHeader::V3(header),
-                line_iter: SessionLineSource::Lines(line_iter),
-            }
-        } else {
-            // Not v3 — fall through and try v1 parsing with the full content.
-            let mut file_content = first_line;
-            for line in line_iter {
-                file_content.push('\n');
-                match line {
-                    Ok(l) => file_content.push_str(&l),
-                    Err(e) => {
-                        eprintln!("error reading '{}': {}", source_name, e);
-                        exit(1);
-                    }
-                }
-            }
-            parse_v1(source_name, file_content)
-        }
-    } else {
-        // Try v1 format: entire content is a single JSON object.
-        // Collect remaining lines from the already-opened iterator.
-        let mut file_content = first_line;
-        for line in line_iter {
-            file_content.push('\n');
-            match line {
-                Ok(l) => file_content.push_str(&l),
-                Err(e) => {
-                    eprintln!("error reading '{}': {}", source_name, e);
-                    exit(1);
-                }
-            }
-        }
-        parse_v1(source_name, file_content)
     }
+
+    // Try v1 format: entire content is a single JSON object.
+    // Collect remaining lines from the already-opened iterator.
+    let mut file_content = first_line;
+    for line in line_iter {
+        file_content.push('\n');
+        match line {
+            Ok(l) => file_content.push_str(&l),
+            Err(e) => {
+                eprintln!("error reading '{}': {}", source_name, e);
+                exit(1);
+            }
+        }
+    }
+    parse_v1(source_name, file_content)
 }
 
 fn parse_v1(source_name: &str, file_content: String) -> Session {
     match serde_json::from_str::<V1Recording>(&file_content) {
         Ok(recording) if recording.version == 1 => {
-            let header = RecordHeaderV2 {
-                version: recording.version,
-                width: recording.width,
-                height: recording.height,
-                timestamp: 0,
-                environment: HashMap::new(),
-            };
-
-            let mut absolute_time: f64 = 0.0;
+            // v1 `stdout` entries are already (delay, text) pairs, matching
+            // the relative-timestamp form playback consumes.
             let events: Vec<SessionLine> = recording
                 .stdout
                 .into_iter()
-                .map(|(delay, text)| {
-                    absolute_time += delay;
-                    SessionLine {
-                        timestamp: absolute_time,
-                        stdout: true,
-                        content: text,
-                    }
+                .map(|(delay, text)| SessionLine {
+                    timestamp: delay,
+                    stdout: true,
+                    content: text,
                 })
                 .collect();
 
             Session {
-                header: RecordHeader::V2(header),
+                relative_timestamps: true,
+                idle_time_limit: None,
                 line_iter: SessionLineSource::Vec(events.into_iter()),
             }
         }
@@ -509,13 +476,12 @@ impl Play {
                 });
             }
         }
+        // The header's idle_time_limit is a default; an explicit CLI value
+        // overrides it (matching `asciinema play -i` semantics).
         let limit = self
             .idle_time_limit
-            .unwrap_or(f64::INFINITY)
-            .min(match &self.session.header {
-                RecordHeader::V3(header) => header.idle_time_limit.unwrap_or(f64::INFINITY),
-                _ => f64::INFINITY,
-            });
+            .or(self.session.idle_time_limit)
+            .unwrap_or(f64::INFINITY);
         for item in self.session.relative_time_iter() {
             let mut delay = item.timestamp.min(limit);
             delay /= self.speed;
@@ -573,7 +539,9 @@ mod tests {
 
     #[test]
     fn test_play_v3() {
-        let play = Play::new(test_data_v3_path(), None, 1.0);
+        // High speed keeps the test fast: the fixture's deltas (with the
+        // header's idle_time_limit of 1.0 applied) sum to ~17s at 1x.
+        let play = Play::new(test_data_v3_path(), None, 100.0);
         play.execute();
     }
 
@@ -621,8 +589,8 @@ mod tests {
         play.execute();
     }
 
-    /// Timing deltas must be computed only between consecutive "o" events, not
-    /// relative to interleaved "i" events.
+    /// Input events contribute to playback timing (required for v3, where
+    /// timestamps are deltas), but must not produce any output.
     #[test]
     fn test_play_stdin_events_do_not_affect_timing() {
         let play = Play::new(test_data_with_stdin_path(), Some(0.5), 2.0);
