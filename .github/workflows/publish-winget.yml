@@ -14,3 +14,4 @@ jobs:
         identifier: "Watfaq.PowerSession"
         repo: "Watfaq/PowerSession-rs"
         URL: "https://github.com/Watfaq/PowerSession-rs/releases/download/v{VERSION}/PowerSession.exe"
+        custom-fork-owner: Watfaq
