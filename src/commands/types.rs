@@ -13,10 +13,14 @@ pub(crate) struct RecordHeader {
 
 /// Represents an asciinema v1 format recording (entire file is one JSON object).
 /// The `stdout` field contains `[delay_seconds, text]` pairs with relative timing.
+/// `width`/`height` are unused by playback but kept required so that
+/// arbitrary JSON objects don't get misdetected as v1 recordings.
 #[derive(Deserialize)]
 pub(crate) struct V1Recording {
     pub(crate) version: u8,
+    #[allow(dead_code)]
     pub(crate) width: i16,
+    #[allow(dead_code)]
     pub(crate) height: i16,
     #[serde(default)]
     pub(crate) stdout: Vec<(f64, String)>,

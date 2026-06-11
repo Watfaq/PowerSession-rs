@@ -2,23 +2,16 @@ use std::path::Path;
 use std::process::exit;
 
 use log::{error, trace};
-use std::sync::mpsc::channel;
 use std::sync::Mutex;
+use std::sync::mpsc::channel;
 use std::time::SystemTime;
-use std::{
-    collections::HashMap,
-    env, fs,
-    fs::File,
-    io::Write,
-    sync::Arc,
-    thread,
-};
+use std::{collections::HashMap, env, fs, fs::File, io::Write, sync::Arc, thread};
 
 #[cfg(windows)]
 use windows::Win32::{
     Foundation::HANDLE,
     Storage::FileSystem::ReadFile,
-    System::Console::{GetStdHandle, WriteConsoleW, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE},
+    System::Console::{GetStdHandle, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, WriteConsoleW},
 };
 
 use crate::commands::types::LineItem;
@@ -187,8 +180,7 @@ impl Record {
                     };
 
                     if valid_up_to > 0 {
-                        let chars =
-                            std::str::from_utf8(&pending_bytes[..valid_up_to]).unwrap();
+                        let chars = std::str::from_utf8(&pending_bytes[..valid_up_to]).unwrap();
                         let now = SystemTime::now()
                             .duration_since(SystemTime::UNIX_EPOCH)
                             .expect("check your machine time");
@@ -259,8 +251,7 @@ impl Record {
                         // Only process complete UTF-8 sequences
                         if valid_up_to > 0 {
                             // Safe: we just validated these bytes are valid UTF-8
-                            let chars =
-                                std::str::from_utf8(&pending_bytes[..valid_up_to]).unwrap();
+                            let chars = std::str::from_utf8(&pending_bytes[..valid_up_to]).unwrap();
 
                             // https://github.com/asciinema/asciinema/blob/5a385765f050e04523c9d74fbf98d5afaa2deff0/asciinema/asciicast/v2.py#L119
                             let data = vec![
